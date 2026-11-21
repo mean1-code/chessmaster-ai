@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chessmaster AI</title>
+<link rel="icon" href="logo.svg">
+<style>
+:root{--bg:#14161c;--panel:#1d2029;--line:#2c3040;--text:#e8ecf4;--dim:#8a92a6;--teal:#19e6d0;--purple:#9b5cff;--light:#3a4052;--dark:#262a37}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:"Trebuchet MS","Segoe UI",sans-serif;min-height:100vh}
+h1,h2{font-weight:600;margin:0}
+button,select{font:inherit;color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:.7rem 1rem;cursor:pointer}
+button:hover:not(:disabled){border-color:var(--teal)}
+button:focus-visible,select:focus-visible{outline:2px solid var(--purple);outline-offset:2px}
+button:disabled{opacity:.45;cursor:default}
+.screen{display:none;max-width:640px;margin:0 auto;padding:1.5rem 1rem}
+.screen.on{display:block}
+.logo{display:block;width:96px;margin:1rem auto .5rem}
+.title{text-align:center;font-size:2rem;letter-spacing:.02em}
+.title span{color:var(--teal)}
+.sub{text-align:center;color:var(--dim);margin:.3rem 0 1.5rem}
+.menu{display:grid;gap:.8rem}
+.menu button{font-size:1.1rem;padding:1.1rem;text-align:left;border-left:4px solid var(--teal)}
+.menu button.soon{border-left-color:var(--purple)}
+.menu small{display:block;color:var(--dim);font-size:.85rem;margin-top:.2rem}
+.opts{display:grid;gap:1rem;margin:1.2rem 0}
+.opts label{display:grid;gap:.4rem;color:var(--dim)}
+.row{display:flex;gap:.6rem;flex-wrap:wrap}
+.go{background:var(--teal);color:#06231f;border:0;font-weight:700}
+.go:hover:not(:disabled){background:#4af0de}
+#game{max-width:760px}
+.bar{display:flex;justify-content:space-between;align-items:center;padding:.5rem .2rem;gap:.5rem}
+.clock{font-variant-numeric:tabular-nums;font-size:1.3rem;padding:.2rem .7rem;border-radius:8px;background:var(--panel);border:1px solid var(--line)}
+.clock.run{border-color:var(--teal);color:var(--teal)}
+#board{--s:min(92vw,68vh,560px);width:var(--s);height:var(--s);margin:0 auto;display:grid;grid-template:repeat(8,1fr)/repeat(8,1fr);border:2px solid var(--line);border-radius:6px;overflow:hidden}
+.sq{display:flex;align-items:center;justify-content:center;font-size:calc(var(--s)/8*.78);line-height:1;cursor:pointer;user-select:none;position:relative}
+.sq.l{background:var(--light)}.sq.d{background:var(--dark)}
+.sq.sel{box-shadow:inset 0 0 0 3px var(--teal)}
+.sq.last{background:rgba(155,92,255,.35)}
+.sq.chk{box-shadow:inset 0 0 14px 4px #ff4d6d}
+.pw{color:#f4f7ff;text-shadow:0 0 2px #000,0 0 2px #000,0 1px 3px #000}
+.pb{color:#0d0f14;text-shadow:0 0 2px #7a8399,0 0 1px #7a8399}
+#status{text-align:center;min-height:1.6rem;margin:.7rem 0;color:var(--teal)}
+#moves{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:.6rem .8rem;max-height:6.5rem;overflow:auto;color:var(--dim);font-size:.9rem;line-height:1.6}
+.ctl{margin-top:.8rem}
+@media (prefers-reduced-motion:no-preference){.sq{transition:background .15s}}
+</style>
+</head>
+<body>
+
+<section id="menu" class="screen on">
+  <img class="logo" src="logo.svg" alt="Chessmaster AI crown logo">
+  <h1 class="title">Chessmaster <span>AI</span></h1>
+  <p class="sub">Learn it. Play it. Master it.</p>
+  <div class="menu">
+    <button onclick="openSetup('ai')">Play vs AI<small>Five levels, from Starter to Master</small></button>
+    <button onclick="openSetup('two')">Two Player<small>Share one device</small></button>
+    <button class="soon" disabled>Coach Mode<small>Coming in stage 2</small></button>
+    <button class="soon" disabled>Chess Sets<small>Coming in stage 3</small></button>
+  </div>
+</section>
+
+<section id="setup" class="screen">
+  <h2 id="setupTitle"></h2>
+  <div class="opts">
+    <label id="lvlWrap">Difficulty
+      <select id="level">
+        <option value="0">Starter</option><option value="1">Easy</option>
+        <option value="2" selected>Medium</option><option value="3">Hard</option><option value="4">Master</option>
+      </select></label>
+    <label id="colWrap">Your colour
+      <select id="color"><option value="w">White</option><option value="b">Black</option></select></label>
+    <label>Timer
+      <select id="timer">
+        <option value="0">Untimed</option><option value="900">Casual: 15 min</option><option value="600">Casual: 10 min</option>
+        <option value="300">Quick: 5 min</option><option value="180">Blitz: 3 min</option>
+      </select></label>
+  </div>
+  <div class="row"><button class="go" onclick="startGame()">Start game</button><button onclick="show('menu')">Back</button></div>
+</section>
+
+<section id="game" class="screen">
+  <div class="bar"><span id="topName"></span><span class="clock" id="clkTop"></span></div>
+  <div id="board" role="grid" aria-label="Chess board"></div>
+  <div class="bar"><span id="botName"></span><span class="clock" id="clkBot"></span></div>
+  <div id="status" aria-live="polite"></div>
+  <div id="moves">No moves yet.</div>
+  <div class="row ctl">
+    <button onclick="undo()">Undo</button>
+    <button onclick="toggleSound()" id="sndBtn">Sound: on</button>
+    <button onclick="startGame()">New game</button>
+    <button onclick="quit()">Menu</button>
+  </div>
+</section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const GLYPH={p:'\u265F\uFE0E',n:'\u265E',b:'\u265D',r:'\u265C',q:'\u265B',k:'\u265A'};
+const LEVELS=[{n:'Starter',skill:0,ms:60,depth:1,rand:.5},{n:'Easy',skill:4,ms:100,depth:1,rand:.15},
+  {n:'Medium',skill:9,ms:250,depth:2,rand:0},{n:'Hard',skill:15,ms:600,depth:2,rand:0},{n:'Master',skill:20,ms:1200,depth:3,rand:0}];
+let mode='ai',game,sel=null,human='w',lvl=LEVELS[2],clocks={w:0,b:0},tick=null,over=false,sound=true,thinking=false,last=null;
+
+function show(id){document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('on',s.id===id))}
+function openSetup(m){mode=m;$('setupTitle').textContent=m==='ai'?'Play vs AI':'Two Player';
+  $('lvlWrap').style.display=$('colWrap').style.display=m==='ai'?'grid':'none';show('setup')}
+function quit(){clearInterval(tick);show('menu')}
+
+/* ---------- Stockfish (loaded from CDN, with a built-in fallback) ---------- */
+let sf=null,sfReady=false,sfCb=null;
+function initStockfish(){
+  try{
+    const url='https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js';
+    sf=new Worker(URL.createObjectURL(new Blob(['importScripts("'+url+'")'],{type:'text/javascript'})));
+    sf.onmessage=e=>{const l=String(e.data);
+      if(l==='uciok'){sfReady=true;sf.postMessage('isready')}
+      else if(l.startsWith('bestmove')&&sfCb){const m=l.split(' ')[1];const cb=sfCb;sfCb=null;cb(m)}};
+    sf.onerror=()=>{sfReady=false};
+    sf.postMessage('uci');
+  }catch(e){sfReady=false}
+}
+function engineMove(cb){
+  if(sfReady){
+    sfCb=m=>{if(m&&m!=='(none)')cb({from:m.slice(0,2),to:m.slice(2,4),promotion:m[4]});else cb(fallbackMove())};
+    sf.postMessage('setoption name Skill Level value '+lvl.skill);
+    sf.postMessage('position fen '+game.fen());
+    sf.postMessage('go movetime '+lvl.ms);
+  }else setTimeout(()=>cb(fallbackMove()),350);
+}
+const VAL={p:100,n:320,b:330,r:500,q:900,k:0};
+function evalBoard(){let s=0;for(const row of game.board())for(const p of row)if(p)s+=(p.color==='w'?1:-1)*VAL[p.type];return s}
+function search(d,a,b,maxi){
+  if(d===0||game.game_over())return evalBoard();
+  let best=maxi?-1e9:1e9;
+  for(const m of game.moves()){game.move(m);const v=search(d-1,a,b,!maxi);game.undo();
+    if(maxi){best=Math.max(best,v);a=Math.max(a,v)}else{best=Math.min(best,v);b=Math.min(b,v)}
+    if(b<=a)break}
+  return best;
+}
+function fallbackMove(){
+  const ms=game.moves({verbose:true});
+  if(Math.random()<lvl.rand)return ms[Math.floor(Math.random()*ms.length)];
+  const white=game.turn()==='w';let best=null,bv=white?-1e9:1e9;
+  for(const m of ms.sort(()=>Math.random()-.5)){game.move(m);const v=search(lvl.depth-1,-1e9,1e9,!white);game.undo();
+    if(white?v>bv:v<bv){bv=v;best=m}}
+  return best;
+}
+
+/* ---------- Game flow ---------- */
+function startGame(){
+  game=new Chess();sel=null;over=false;thinking=false;last=null;sfCb=null;
+  lvl=LEVELS[+$('level').value];human=mode==='ai'?$('color').value:'w';
+  const t=+$('timer').value;clocks={w:t,b:t};
+  $('topName').textContent=mode==='ai'?lvl.n+' AI':'Player 2 (Black)';
+  $('botName').textContent=mode==='ai'?'You':'Player 1 (White)';
+  show('game');clearInterval(tick);
+  tick=setInterval(onTick,1000);render();
+  if(mode==='ai'&&human==='b')aiTurn();
+}
+function onTick(){
+  const t=+$('timer').value;if(!t||over||game.history().length===0&&false)return;
+  clocks[game.turn()]--;
+  if(clocks[game.turn()]<=0){clocks[game.turn()]=0;over=true;
+    $('status').textContent=(game.turn()==='w'?'Black':'White')+' wins on time.';beep(200,.4)}
+  renderClocks();
+}
+function fmt(s){return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
+function renderClocks(){
+  const t=+$('timer').value,flip=human==='b'&&mode==='ai';
+  const top=flip?'w':'b',bot=flip?'b':'w';
+  for(const [id,c] of [['clkTop',top],['clkBot',bot]]){const e=$(id);
+    e.style.display=t?'':'none';e.textContent=fmt(clocks[c]);e.classList.toggle('run',!over&&game.turn()===c)}
+  $('topName').textContent=mode==='ai'?(flip?'You':lvl.n+' AI'):(flip?'Player 1 (White)':'Player 2 (Black)');
+  $('botName').textContent=mode==='ai'?(flip?lvl.n+' AI':'You'):'Player 1 (White)';
+}
+function render(){
+  const b=$('board');b.innerHTML='';
+  const flip=mode==='ai'&&human==='b';
+  const inCheck=game.in_check(),turn=game.turn();
+  for(let r=0;r<8;r++)for(let f=0;f<8;f++){
+    const rr=flip?7-r:r,ff=flip?7-f:f,name='abcdefgh'[ff]+(8-rr);
+    const p=game.get(name),d=document.createElement('div');
+    d.className='sq '+((rr+ff)%2?'d':'l');
+    if(name===sel)d.classList.add('sel');
+    if(last&&(name===last.from||name===last.to))d.classList.add('last');
+    if(inCheck&&p&&p.type==='k'&&p.color===turn)d.classList.add('chk');
+    if(p){d.textContent=GLYPH[p.type];d.classList.add(p.color==='w'?'pw':'pb')}
+    d.setAttribute('role','gridcell');d.setAttribute('aria-label',name+(p?' '+p.color+p.type:''));
+    d.onclick=()=>clickSq(name);b.appendChild(d);
+  }
+  const h=game.history();let html='';
+  for(let i=0;i<h.length;i+=2)html+=(i/2+1)+'. '+h[i]+' '+(h[i+1]||'')+'&nbsp;&nbsp; ';
+  $('moves').innerHTML=html||'No moves yet.';$('moves').scrollTop=1e6;
+  if(!over)$('status').textContent=thinking?'AI is thinking...':(turn==='w'?'White':'Black')+' to move'+(inCheck?' - check!':'');
+  renderClocks();
+}
+function clickSq(name){
+  if(over||thinking||(mode==='ai'&&game.turn()!==human))return;
+  const p=game.get(name);
+  if(sel){
+    const m=game.move({from:sel,to:name,promotion:'q'});
+    if(m){sel=null;afterMove(m);return}
+  }
+  sel=p&&p.color===game.turn()?name:null;render();
+}
+function afterMove(m){
+  last={from:m.from,to:m.to};
+  if(game.in_checkmate()){over=true;beep(520,.5);$('status').textContent='Checkmate! '+(m.color==='w'?'White':'Black')+' wins.'}
+  else if(game.in_draw()){over=true;beep(300,.4);$('status').textContent='Draw.'}
+  else beep(m.captured?330:440,.08,m.captured?'square':'sine');
+  if(game.in_check()&&!over)beep(600,.15,'sawtooth');
+  render();
+  if(!over&&mode==='ai'&&game.turn()!==human)aiTurn();
+}
+function aiTurn(){
+  thinking=true;render();
+  engineMove(m=>{thinking=false;if(over)return;const r=game.move(m);if(r)afterMove(r);else render()});
+}
+function undo(){
+  if(thinking||!game.history().length)return;
+  game.undo();if(mode==='ai'&&game.turn()!==human&&game.history().length)game.undo();
+  over=false;sel=null;last=null;render();
+}
+
+/* ---------- Sound ---------- */
+let ac=null;
+function beep(freq,dur,type='sine'){
+  if(!sound)return;
+  try{ac=ac||new (window.AudioContext||window.webkitAudioContext)();
+    const o=ac.createOscillator(),g=ac.createGain();o.type=type;o.frequency.value=freq;
+    g.gain.setValueAtTime(.08,ac.currentTime);g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+dur);
+    o.connect(g);g.connect(ac.destination);o.start();o.stop(ac.currentTime+dur)}catch(e){}
+}
+function toggleSound(){sound=!sound;$('sndBtn').textContent='Sound: '+(sound?'on':'off')}
+
+initStockfish();
+</script>
+</body>
+</html>
