@@ -48,6 +48,16 @@ button:disabled{opacity:.45;cursor:default}
 .sq.dot.cap::after{width:88%;height:88%;background:none;border:3px solid rgba(25,230,208,.75)}
 #coach{background:var(--panel);border-left:4px solid var(--purple);border-radius:8px;padding:.7rem .9rem;margin:.6rem 0;line-height:1.45}
 #coach:empty{display:none}
+.tok{display:flex;align-items:center;justify-content:center;width:80%;height:80%;border-radius:50%;background:var(--tc);font-size:calc(var(--s)/8*.5);border:2px solid rgba(0,0,0,.35);box-shadow:0 2px 4px rgba(0,0,0,.35);line-height:1}
+.tok.tb{border-color:rgba(255,255,255,.35)}
+.mb{--s:min(80vw,320px);width:var(--s);height:var(--s);margin:.8rem auto;display:grid;grid-template:repeat(8,1fr)/repeat(8,1fr);border:2px solid var(--line);border-radius:6px;overflow:hidden}
+.setgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.6rem;margin:1rem 0}
+.setgrid button{text-align:left}
+.setgrid small{display:block;color:var(--dim);font-size:.8rem;margin-top:.2rem}
+#prevInfo{text-align:center;color:var(--dim);margin:.4rem 0 .8rem}
+input[type=range]{accent-color:var(--teal);width:100%}
+.co{position:absolute;font-size:calc(var(--s)/8*.2);color:#a9b0c2;line-height:1;pointer-events:none;font-family:sans-serif;font-weight:600}
+.co.rk{top:4%;left:5%}.co.fl{bottom:4%;right:6%}
 .sq.sug{box-shadow:inset 0 0 0 3px #ffd166,inset 0 0 12px 2px rgba(255,209,102,.6)}
 #log{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:.5rem .8rem;margin-top:.8rem;max-height:8rem;overflow:auto;font-size:.9rem;line-height:1.5;color:var(--dim)}
 #log:empty{display:none}
@@ -68,8 +78,29 @@ button:disabled{opacity:.45;cursor:default}
     <button onclick="openSetup('ai')">Play vs AI<small>Five levels, from Starter to Master</small></button>
     <button onclick="openSetup('two')">Two Player<small>Share one device</small></button>
     <button onclick="show('coachMenu');$('pts').textContent='Points: '+points">Coach Mode<small>Lessons, puzzles and a coach that helps as you play</small></button>
-    <button class="soon" disabled>Chess Sets<small>Coming in stage 3</small></button>
+    <button onclick="openSets()">Chess Sets<small>Pick your pieces and preview sets you can earn</small></button>
+    <button onclick="openVoice()">Voice options<small>Choose the coach's voice and speed</small></button>
   </div>
+</section>
+
+<section id="sets" class="screen">
+  <h2>Chess Sets</h2>
+  <p class="sub" id="setPts"></p>
+  <div id="prevBoard" class="mb"></div>
+  <div id="prevInfo"></div>
+  <div class="row" style="justify-content:center"><button class="go" id="useBtn" onclick="useSet()">Use this set</button></div>
+  <div id="setList" class="setgrid"></div>
+  <div class="row"><button onclick="show('menu')">Back</button></div>
+</section>
+
+<section id="voiceSet" class="screen">
+  <h2>Voice options</h2>
+  <div class="opts">
+    <label>Coach voice<select id="voiceSel" onchange="saveVoice();testVoice()"></select></label>
+    <label>Speed: <span id="rateVal">1.0x</span><input type="range" id="voiceRate" min="0.7" max="1.4" step="0.1" value="1" oninput="saveVoice()" onchange="testVoice()"></label>
+  </div>
+  <p class="sub" style="text-align:left">Available voices depend on your device and browser.</p>
+  <div class="row"><button class="go" onclick="testVoice()">Test voice</button><button onclick="show('menu')">Back</button></div>
 </section>
 
 <section id="coachMenu" class="screen">
@@ -111,6 +142,7 @@ button:disabled{opacity:.45;cursor:default}
   <div id="board" role="grid" aria-label="Chess board"></div>
   <div class="bar"><span id="botName"></span><span class="clock" id="clkBot"></span></div>
   <div id="coach" aria-live="polite"></div>
+  <div class="row" id="revRow"><button id="revBtn" class="go" onclick="reverseBad()" style="display:none">Reverse my move</button><button id="keepBtn" onclick="keepBad()" style="display:none">Keep it</button></div>
   <div id="status" aria-live="polite"></div>
   <div id="moves">No moves yet.</div>
   <div id="log" aria-live="polite"></div>
@@ -128,7 +160,8 @@ button:disabled{opacity:.45;cursor:default}
     <button id="nextBtn" class="go" onclick="nextDrill()" style="display:none">Next</button>
     <button id="undoBtn" onclick="undo()">Undo</button>
     <button onclick="toggleSound()" id="sndBtn">Sound: on</button>
-    <button onclick="toggleVoice()" id="voiceBtn">Voice: off</button>
+    <button onclick="toggleVoice()" id="voiceBtn">Voice: on</button>
+    <button onclick="speak(lastSpoken,true)">Repeat</button>
     <button id="newBtn" onclick="startGame()">New game</button>
     <button onclick="quit()">Menu</button>
   </div>
@@ -140,9 +173,11 @@ const $=id=>document.getElementById(id);
 const GLYPH={p:'\u265F\uFE0E',n:'\u265E',b:'\u265D',r:'\u265C',q:'\u265B',k:'\u265A'};
 const LEVELS=[{n:'Starter',skill:0,ms:60,depth:1,rand:.5},{n:'Easy',skill:4,ms:100,depth:1,rand:.15},
   {n:'Medium',skill:9,ms:250,depth:2,rand:0},{n:'Hard',skill:15,ms:600,depth:2,rand:0},{n:'Master',skill:20,ms:1200,depth:3,rand:0}];
-let coach={w:0,b:0},sug=null,fb='',drill=null,dl=[],di=0,mode='ai',game,sel=null,human='w',lvl=LEVELS[2],clocks={w:0,b:0},tick=null,over=false,sound=true,thinking=false,last=null;
+let coach={w:0,b:0},sug=null,fb='',badPending=null,okMove=null,drill=null,dl=[],di=0,mode='ai',game,sel=null,human='w',lvl=LEVELS[2],clocks={w:0,b:0},tick=null,over=false,sound=true,thinking=false,last=null;
 
 let points=0;try{points=+localStorage.getItem('cm_points')||0}catch(e){}
+let curSet='classic',prevId='classic',done=[],vName='',vRate=1;
+try{curSet=localStorage.getItem('cm_set')||'classic';done=JSON.parse(localStorage.getItem('cm_done')||'[]');vName=localStorage.getItem('cm_vname')||'';vRate=+localStorage.getItem('cm_vrate')||1}catch(e){}
 function show(id){document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('on',s.id===id))}
 function openSetup(m,coachOn){mode=m;$('setupTitle').textContent=m==='ai'?(coachOn?'Play with the coach':'Play vs AI'):'Two Player';
   $('lvlWrap').style.display=$('colWrap').style.display=m==='ai'?'grid':'none';
@@ -197,7 +232,7 @@ function startGame(){
   game=new Chess();sel=null;over=false;thinking=false;last=null;sfCb=null;
   lvl=LEVELS[+$('level').value];human=mode==='ai'?$('color').value:'w';
   if(mode==='ai'){const on=+$('coachW').value;coach={w:human==='w'?on:0,b:human==='b'?on:0}}
-  else coach={w:+$('coachW').value,b:+$('coachB').value};sug=null;fb='';
+  else coach={w:+$('coachW').value,b:+$('coachB').value};sug=null;fb='';badPending=null;
   drill=null;
   const t=+$('timer').value;clocks={w:t,b:t};
   $('topName').textContent=mode==='ai'?lvl.n+' AI':'Player 2 (Black)';
@@ -210,10 +245,12 @@ function startGame(){
   if(mode==='ai'&&human==='b')aiTurn();else coachTurn();
 }
 function onTick(){
-  const t=+$('timer').value;if(!t||over||mode==='drill')return;
+  const t=+$('timer').value;if(!t||over||mode==='drill'||badPending)return;
   clocks[game.turn()]--;
   if(clocks[game.turn()]<=0){clocks[game.turn()]=0;over=true;
-    $('status').textContent=(game.turn()==='w'?'Black':'White')+' wins on time.';beep(200,.4)}
+    const w=game.turn()==='w'?'b':'w';let t=(w==='w'?'White':'Black')+' wins on time.';
+    if(mode==='ai'&&w===human){const n=[5,10,20,35,50][LEVELS.indexOf(lvl)];t+=' +'+n+' points!'+addPoints(n)}
+    $('status').textContent=t;beep(200,.4)}
   renderClocks();
 }
 function fmt(s){return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
@@ -226,8 +263,9 @@ function renderClocks(){
   $('topName').textContent=mode==='ai'?(flip?'You':lvl.n+' AI'):(flip?'Player 1 (White)':'Player 2 (Black)');
   $('botName').textContent=mode==='ai'?(flip?lvl.n+' AI':'You'):'Player 1 (White)';
 }
+function co(t,c){const e=document.createElement('span');e.className='co '+c;e.textContent=t;return e}
 function render(){
-  const b=$('board');b.innerHTML='';
+  const b=$('board');b.innerHTML='';const ST=setById(curSet);b.style.setProperty('--light',ST.light);b.style.setProperty('--dark',ST.dark);
   const flip=mode==='ai'&&human==='b';
   const inCheck=game.in_check(),turn=game.turn();
   const targets={};if(sel&&helpOn())game.moves({square:sel,verbose:true}).forEach(m=>targets[m.to]=m);
@@ -240,7 +278,9 @@ function render(){
     if(sug&&(name===sug.from||name===sug.to))d.classList.add('sug');
     if(last&&(name===last.from||name===last.to))d.classList.add('last');
     if(inCheck&&p&&p.type==='k'&&p.color===turn)d.classList.add('chk');
-    if(p){d.textContent=GLYPH[p.type];d.classList.add(p.color==='w'?'pw':'pb')}
+    if(p)pieceEl(d,p,ST);
+    if(f===0)d.appendChild(co(8-rr,'rk'));
+    if(r===7)d.appendChild(co('abcdefgh'[ff],'fl'));
     d.setAttribute('role','gridcell');d.setAttribute('aria-label',name+(p?' '+p.color+p.type:''));
     d.onclick=()=>clickSq(name);b.appendChild(d);
   }
@@ -250,35 +290,43 @@ function render(){
   if(!over&&mode==='drill')$('status').textContent=(turn==='w'?'White':'Black')+' to move';
   else if(!over)$('status').textContent=thinking?'AI is thinking...':(turn==='w'?'White':'Black')+' to move'+(inCheck?' - check!':'');
   renderClocks();
+  $('revBtn').style.display=$('keepBtn').style.display=badPending?'':'none';
 }
 function clickSq(name){
-  if(over||thinking||(mode==='ai'&&game.turn()!==human)||(mode==='drill'&&drill.done))return;
+  if(over||thinking||(mode==='ai'&&game.turn()!==human)||(mode==='drill'&&drill.done)||badPending)return;
   const p=game.get(name);
   if(sel){
     if(game.moves({square:sel,verbose:true}).some(x=>x.to===name)){
       const track=mode!=='drill'&&coach[game.turn()];
-      const pre=track?search(2,-1e9,1e9,game.turn()==='w'):0;
+      const trusted=!!(track&&okMove&&okMove.fen===game.fen()&&okMove.from===sel&&okMove.to===name);
+      const pre=track&&!trusted?search(2,-1e9,1e9,game.turn()==='w'):0;
       const m=game.move({from:sel,to:name,promotion:'q'});sel=null;
       if(mode==='drill'){drillCheck(m);return}
-      afterMove(m);if(track&&!over)review(m,pre);coachTurn();return;
+      if(trusted)fb="Great choice! That was the coach's suggestion.";
+      const bad=track&&!trusted&&!game.game_over()?review(m,pre):false;
+      if(bad)badPending={lv:coach[m.color]};
+      afterMove(m,bad);coachTurn();return;
     }
   }
   sel=p&&p.color===game.turn()?name:null;render();
 }
-function afterMove(m){
-  last={from:m.from,to:m.to};sug=null;
-  if(game.in_checkmate()){over=true;beep(520,.5);$('status').textContent='Checkmate! '+(m.color==='w'?'White':'Black')+' wins.'}
+function afterMove(m,hold){
+  last={from:m.from,to:m.to};sug=null;okMove=null;
+  if(game.in_checkmate()){over=true;beep(520,.5);let t='Checkmate! '+(m.color==='w'?'White':'Black')+' wins.';
+    if(mode==='ai'&&m.color===human){const n=[5,10,20,35,50][LEVELS.indexOf(lvl)];t+=' +'+n+' points!'+addPoints(n)}
+    $('status').textContent=t}
   else if(game.in_draw()){over=true;beep(300,.4);$('status').textContent='Draw.'}
   else beep(m.captured?330:440,.08,m.captured?'square':'sine');
   if(game.in_check()&&!over)beep(600,.15,'sawtooth');
   render();
-  if(!over&&mode==='ai'&&game.turn()!==human)aiTurn();
+  if(!over&&!hold&&mode==='ai'&&game.turn()!==human)aiTurn();
 }
 function aiTurn(){
   thinking=true;render();
   engineMove(m=>{thinking=false;if(over)return;const r=game.move(m);if(r){afterMove(r);coachTurn()}else render()});
 }
 function undo(){
+  if(badPending){reverseBad();return}
   if(thinking||!game.history().length)return;
   game.undo();if(mode==='ai'&&game.turn()!==human&&game.history().length)game.undo();
   over=false;sel=null;last=null;sug=null;fb='';render();coachTurn();
@@ -316,13 +364,33 @@ function why(m){
 }
 const LN=['off','Basic','Learner','Beginner'];
 function review(m,pre){
-  const sgn=m.color==='w'?1:-1,post=search(1,-1e9,1e9,game.turn()==='w'),drop=(pre-post)*sgn;
-  if(drop>=100){
+  const lv=coach[m.color],sgn=m.color==='w'?1:-1,post=search(1,-1e9,1e9,game.turn()==='w'),drop=(pre-post)*sgn;
+  if(drop>=(lv>=2?100:300)){
     let best=null,bv=1e9;
     for(const r of game.moves({verbose:true})){game.move({from:r.from,to:r.to,promotion:r.promotion});const v=sgn*evalBoard();game.undo();if(v<bv){bv=v;best=r}}
-    fb=best&&best.captured?'Oops, that leaves your '+PN[best.captured]+' on '+best.to+' open to capture. Press Undo to try again, or keep going. Everyone slips sometimes!':'Hmm, that gives away a little material. Press Hint next time you want a safe idea.';
-  }else if(m.captured||m.san.includes('+'))fb=m.captured?'Nice capture! You won a '+PN[m.captured]+'.':'Nice check! Keep the pressure on.';
+    const pts=Math.max(1,Math.round(drop/100)),pl=pts>1?'s':'';
+    if(best&&best.captured)fb=lv>=2
+      ?'Careful! Their '+PN[best.piece]+' can capture your '+PN[best.captured]+' on '+best.to+', which would cost you about '+pts+' point'+pl+' of material. Before each move, check which of your pieces the opponent can attack. Want to reverse it?'
+      :'Careful! Your '+PN[best.captured]+' on '+best.to+' can be captured. Want to reverse it?';
+    else fb=lv>=2
+      ?'That move gives away about '+pts+' point'+pl+' of material. Reversing it lets you look for a safer idea. Want to reverse it?'
+      :'That move looks like a mistake. Want to reverse it?';
+    return true;
+  }
+  if(m.captured||m.san.includes('+'))fb=m.captured?'Nice capture! You won a '+PN[m.captured]+'.':'Nice check! Keep the pressure on.';
   else fb=['Good, solid move.','Nice! Keep it up.','That works well. Keep your pieces protected.'][game.history().length%3];
+  return false;
+}
+function reverseBad(){
+  if(!badPending)return;
+  const lv=badPending.lv;badPending=null;game.undo();last=null;sel=null;sug=null;beep(300,.15);
+  fb='Move reversed. '+(lv>=2?'Have another look, and I will help.':'Try a different move.');
+  render();coachTurn();
+}
+function keepBad(){
+  if(!badPending)return;
+  badPending=null;fb='';render();
+  if(mode==='ai'&&game.turn()!==human)aiTurn();else say('Okay, keeping it. Good luck!');
 }
 function strategyTip(){
   const t=game.turn(),n=game.history().length;
@@ -346,12 +414,13 @@ function suggest(pre){
   engineMove(m=>{
     if(game.fen()!==f)return;
     const mv=game.moves({verbose:true}).find(x=>x.from===m.from&&x.to===m.to);if(!mv)return;
-    sug={from:mv.from,to:mv.to};say((pre?pre+' ':'')+'Suggested move: '+mv.san+' (gold squares). '+why(mv));render();
+    sug={from:mv.from,to:mv.to};okMove={from:mv.from,to:mv.to,fen:f};say((pre?pre+' ':'')+'Suggested move: '+mv.san+' (gold squares). '+why(mv));render();
   },20,700,LEVELS[4]);
 }
 function coachTurn(){
   if(over||mode==='drill')return;
   const t=game.turn(),lv=coach[t];let msg=fb;fb='';
+  if(badPending){say(msg);return}
   if(!lv||(mode==='ai'&&t!==human)){if(msg)say(msg);return}
   if(lv===2)msg+=(msg?' ':'')+strategyTip();
   if(lv===3){say((msg?msg+' ':'')+'Finding the best move for you...',true);suggest(msg);return}
@@ -359,17 +428,18 @@ function coachTurn(){
 }
 function hint(){
   if(over||thinking)return;
+  if(badPending){say('Choose Reverse my move or Keep it first.',true);return}
   if(mode==='drill'){if(drill.done)return;sel=drill.ok[0].slice(0,2);say('Hint: '+drill.tip);render();return}
   if(!coach[game.turn()]){say('Switch the coach on for this side to use hints.');return}
   if(mode==='ai'&&game.turn()!==human)return;
   say('Let me think...',true);
   engineMove(m=>{const mv=game.moves({verbose:true}).find(x=>x.from===m.from&&x.to===m.to);
-    if(!mv)return;sel=mv.from;say('Try '+mv.san+'. '+why(mv));render()},20,800,LEVELS[4]);
+    if(!mv)return;sel=mv.from;okMove={from:mv.from,to:mv.to,fen:game.fen()};say('Try '+mv.san+'. '+why(mv));render()},20,800,LEVELS[4]);
 }
 function showPts(){try{localStorage.setItem('cm_points',points)}catch(e){}}
 function startDrills(type){dl=DRILLS.filter(d=>d.t===type);di=0;mode='drill';loadDrill()}
 function loadDrill(){
-  drill={...dl[di],type:dl[di].t,done:false};
+  drill={...dl[di],type:dl[di].t,done:false};badPending=null;
   game=new Chess(drill.fen);sel=null;over=false;thinking=false;last=null;clearInterval(tick);
   $('hintBtn').style.display='';$('ctRow').style.display='none';$('undoBtn').style.display=$('newBtn').style.display='none';$('nextBtn').style.display='none';
   show('game');say(drill.n+' ('+(di+1)+' of '+dl.length+'): '+drill.say);render();
@@ -377,8 +447,10 @@ function loadDrill(){
 function drillCheck(m){
   const uci=m.from+m.to+(m.promotion&&drill.ok.some(o=>o.length>4)?m.promotion:'');
   if(drill.ok.includes(uci)){
-    drill.done=true;points+=10;showPts();beep(660,.25);last={from:m.from,to:m.to};
-    say(drill.win+' +10 points (total '+points+').');
+    drill.done=true;beep(660,.25);last={from:m.from,to:m.to};
+    const first=!done.includes(drill.n);let extra=' You already earned points for this one.';
+    if(first){done.push(drill.n);try{localStorage.setItem('cm_done',JSON.stringify(done))}catch(e){}extra=' +10 points (total '+(points+10)+').'+addPoints(10)}
+    say(drill.win+extra);
     $('nextBtn').style.display='';$('nextBtn').textContent=di+1<dl.length?'Next':'Finish';
   }else{game.undo();beep(220,.2);say("Not quite, but good try! Press Hint if you'd like a nudge.")}
   render();
@@ -386,15 +458,20 @@ function drillCheck(m){
 function nextDrill(){di++;if(di>=dl.length){show('coachMenu');$('pts').textContent='All done! Points: '+points;return}loadDrill()}
 
 /* ---------- Chat and voice ---------- */
-let voiceOn=false,rec=null;
-function speak(t){
-  if(!voiceOn||!('speechSynthesis' in window))return;
-  speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);u.rate=1;speechSynthesis.speak(u);
+let voiceOn=true,rec=null,lastSpoken='';try{if(localStorage.getItem('cm_voice')==='off')voiceOn=false}catch(e){}
+function speak(t,force){
+  lastSpoken=t;
+  if(!(voiceOn||force)||!('speechSynthesis' in window))return;
+  const ss=speechSynthesis;ss.cancel();
+  const u=new SpeechSynthesisUtterance(String(t).replace(/\b([a-h])([1-8])\b/g,(x,f,r)=>f.toUpperCase()+' '+r));
+  const vs=ss.getVoices(),v=vs.find(x=>x.name===vName)||vs.find(x=>/^en/i.test(x.lang));if(v)u.voice=v;u.lang=v?v.lang:'en-GB';u.rate=vRate;
+  setTimeout(()=>ss.speak(u),60);
 }
 function toggleVoice(){
   voiceOn=!voiceOn;$('voiceBtn').textContent='Voice: '+(voiceOn?'on':'off');
-  if(voiceOn){if(!('speechSynthesis' in window)){voiceOn=false;$('voiceBtn').textContent='Voice: off';say('Sorry, this browser cannot speak out loud.');return}speak('Voice is on. I will read my tips out loud.')}
-  else if('speechSynthesis' in window)speechSynthesis.cancel();
+  try{localStorage.setItem('cm_voice',voiceOn?'on':'off')}catch(e){}
+  if(!('speechSynthesis' in window)){logLine('Coach','Sorry, this browser cannot speak out loud.');return}
+  if(voiceOn)speak('Voice is on. I will read my tips out loud.');else speechSynthesis.cancel();
 }
 const KB=[
 [/en passant/,'En passant is a special pawn capture. If an enemy pawn jumps two squares and lands next to your pawn, you can capture it as if it had moved only one square. You must do it straight away.'],
@@ -433,6 +510,68 @@ function listen(){
     rec.onresult=e=>{$('chatIn').value=e.results[0][0].transcript;ask()};rec.start()}catch(e){}
 }
 
+/* ---------- Chess sets ---------- */
+const SETS=[
+{id:'classic',name:'Classic Modern',cost:0,desc:'Clean, minimal pieces. The default set.',light:'#3a4052',dark:'#262a37'},
+{id:'medieval',name:'Medieval Knights',cost:0,desc:'Swords, steeds and stone towers.',sym:{p:'🗡️',n:'🐴',b:'⛪',r:'🏰',q:'🏹',k:'👑'},light:'#c9a66b',dark:'#7a5230',wc:'#f1e3c4',bc:'#4a3321'},
+{id:'egypt',name:'Ancient Egypt',cost:0,desc:'Snakes, camels and golden sands.',sym:{p:'🐍',n:'🐪',b:'🏺',r:'🔺',q:'🐈',k:'🌞'},light:'#e8c872',dark:'#b0803a',wc:'#f6e6b0',bc:'#1f4e5f'},
+{id:'roman',name:'Roman Legion',cost:40,desc:'Shields, chariot horses and the legion eagle.',sym:{p:'🛡️',n:'🐎',b:'📜',r:'🏛️',q:'⚔️',k:'🦅'},light:'#d9c3a0',dark:'#9c3d3d',wc:'#f3efe6',bc:'#6b1f1f'},
+{id:'samurai',name:'Samurai and Shogun',cost:80,desc:'Cherry blossoms, ninjas and castles of Japan.',sym:{p:'🌸',n:'🐴',b:'🎎',r:'🏯',q:'🥷',k:'⛩️'},light:'#efe3d3',dark:'#8f2f3a',wc:'#fff7ec',bc:'#2b2b33'},
+{id:'fairy',name:'Fairy-Tale Kingdom',cost:120,desc:'Fairies, unicorns, dragons and royalty.',sym:{p:'🧚',n:'🦄',b:'🐉',r:'🏰',q:'👸',k:'🤴'},light:'#f0d9f5',dark:'#a78bd8',wc:'#fff0fb',bc:'#6a4fb0'},
+{id:'space',name:'Space Explorers',cost:160,desc:'Satellites, rockets, planets and aliens.',sym:{p:'🛰️',n:'🚀',b:'☄️',r:'🪐',q:'👽',k:'🌍'},light:'#2d3560',dark:'#141a3d',wc:'#e8f0ff',bc:'#3b2d73'},
+{id:'ocean',name:'Ocean Depths',cost:200,desc:'Shells, dolphins, sharks and a royal trident.',sym:{p:'🐚',n:'🐬',b:'🦈',r:'🐙',q:'🐋',k:'🔱'},light:'#6fc3d6',dark:'#1f6f8f',wc:'#e8fbff',bc:'#0f3f5c'},
+{id:'caped',name:'Caped Heroes',cost:250,desc:'Original superheroes, lightning and city skylines.',sym:{p:'🦸',n:'⚡',b:'🛡️',r:'🏙️',q:'💫',k:'🌟'},light:'#ffd166',dark:'#d6453d',wc:'#fff3c4',bc:'#1d3f8f'},
+{id:'robot',name:'Robot Rebellion',cost:300,desc:'Friendly robots with a big brain for a queen.',sym:{p:'🔩',n:'🤖',b:'📡',r:'⚙️',q:'🧠',k:'👾'},light:'#5b6770',dark:'#2a3138',wc:'#d5dde3',bc:'#0f766e'}
+];
+function setById(id){return SETS.find(x=>x.id===id)||SETS[0]}
+function pieceEl(d,p,ST){
+  if(ST.sym){const t=document.createElement('span');t.className='tok '+(p.color==='w'?'tw':'tb');t.style.setProperty('--tc',p.color==='w'?ST.wc:ST.bc);t.textContent=ST.sym[p.type];d.appendChild(t)}
+  else{d.textContent=GLYPH[p.type];d.classList.add(p.color==='w'?'pw':'pb')}
+}
+function addPoints(n){
+  const old=points;points+=n;showPts();
+  const u=SETS.filter(x=>x.cost>old&&x.cost<=points).map(x=>x.name);
+  return u.length?' You unlocked: '+u.join(', ')+'!':'';
+}
+function openSets(){prevId=curSet;renderSets();show('sets')}
+function renderSets(){
+  $('setPts').textContent='Your points: '+points+'. Earn points by winning games and finishing lessons and puzzles.';
+  const st=setById(prevId),open=st.cost<=points;
+  const mb=$('prevBoard');mb.innerHTML='';mb.style.setProperty('--light',st.light);mb.style.setProperty('--dark',st.dark);
+  const g=new Chess();
+  for(let r=0;r<8;r++)for(let f=0;f<8;f++){
+    const d=document.createElement('div');d.className='sq '+((r+f)%2?'d':'l');
+    const p=g.get('abcdefgh'[f]+(8-r));if(p)pieceEl(d,p,st);mb.appendChild(d);
+  }
+  $('prevInfo').textContent=st.name+': '+st.desc+' '+(st.cost===0?'Free to use.':open?'Unlocked!':'Locked. Preview only: earn '+(st.cost-points)+' more points to unlock it ('+st.cost+' in total).');
+  $('useBtn').style.display=open&&curSet!==st.id?'':'none';
+  $('useBtn').textContent='Use '+st.name;
+  const list=$('setList');list.innerHTML='';
+  SETS.forEach(x=>{
+    const b=document.createElement('button');b.textContent=x.name+(curSet===x.id?' (in use)':'');
+    const sm=document.createElement('small');sm.textContent=x.cost===0?'Free':x.cost<=points?'Unlocked':'Locked: '+x.cost+' points';b.appendChild(sm);
+    if(prevId===x.id)b.style.borderColor='var(--teal)';
+    b.onclick=()=>{prevId=x.id;renderSets()};list.appendChild(b);
+  });
+}
+function useSet(){curSet=prevId;try{localStorage.setItem('cm_set',curSet)}catch(e){}renderSets()}
+
+/* ---------- Voice options ---------- */
+function fillVoices(){
+  const sel=$('voiceSel');if(!sel||!('speechSynthesis' in window))return;
+  const vs=speechSynthesis.getVoices(),en=vs.filter(v=>/^en/i.test(v.lang)),list=en.length?en:vs;
+  sel.innerHTML='';
+  if(!list.length){const o=document.createElement('option');o.textContent='Default voice';sel.appendChild(o);return}
+  list.forEach(v=>{const o=document.createElement('option');o.value=v.name;o.textContent=v.name+' ('+v.lang+')';sel.appendChild(o)});
+  if(vName&&list.some(v=>v.name===vName))sel.value=vName;
+}
+function openVoice(){fillVoices();$('voiceRate').value=vRate;$('rateVal').textContent=vRate.toFixed(1)+'x';show('voiceSet')}
+function saveVoice(){
+  vName=$('voiceSel').value||'';vRate=+$('voiceRate').value;$('rateVal').textContent=vRate.toFixed(1)+'x';
+  try{localStorage.setItem('cm_vname',vName);localStorage.setItem('cm_vrate',vRate)}catch(e){}
+}
+function testVoice(){speak('Hello! I am your Chessmaster coach. Try knight to f three.',true)}
+
 /* ---------- Sound ---------- */
 let ac=null;
 function beep(freq,dur,type='sine'){
@@ -444,7 +583,8 @@ function beep(freq,dur,type='sine'){
 }
 function toggleSound(){sound=!sound;$('sndBtn').textContent='Sound: '+(sound?'on':'off')}
 
-initStockfish();
+initStockfish();$('voiceBtn').textContent='Voice: '+(voiceOn?'on':'off');
+if('speechSynthesis' in window)speechSynthesis.onvoiceschanged=fillVoices;
 </script>
 </body>
 </html>
