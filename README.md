@@ -1,6 +1,6 @@
 # Chessmaster AI
 
-A free chess game that runs in your browser. Stage 1 includes Play vs AI (Starter to Master), Two Player on one device, a timer, undo, move history and sound.
+A free chess game that runs in your browser. Includes Play vs AI (Starter to Master), Two Player on one device, a timer, undo, move history, sound, and Coach Mode with three levels: Basic (shows where pieces can move, hints, mistake alerts), Learner (adds strategy tips) and Beginner (also suggests the best move), plus lessons, puzzles, chat and voice.
 
 ## Put it on GitHub (step by step)
 1. Sign in at github.com (create a free account if needed).
@@ -16,4 +16,4 @@ Double-click `index.html` to open it in your browser. You need an internet conne
 
 ## Notes
 - The AI uses Stockfish when it loads. If it cannot load, a simpler built-in engine plays instead, so the game always works.
-- Coach mode, points, unlockable chess sets and logo polish come in stages 2 and 3.
+- Unlockable chess sets and logo polish come in stage 3. Coach points are already being saved for it.

@@ -44,6 +44,17 @@ button:disabled{opacity:.45;cursor:default}
 #status{text-align:center;min-height:1.6rem;margin:.7rem 0;color:var(--teal)}
 #moves{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:.6rem .8rem;max-height:6.5rem;overflow:auto;color:var(--dim);font-size:.9rem;line-height:1.6}
 .ctl{margin-top:.8rem}
+.sq.dot::after{content:"";position:absolute;width:28%;height:28%;border-radius:50%;background:rgba(25,230,208,.6)}
+.sq.dot.cap::after{width:88%;height:88%;background:none;border:3px solid rgba(25,230,208,.75)}
+#coach{background:var(--panel);border-left:4px solid var(--purple);border-radius:8px;padding:.7rem .9rem;margin:.6rem 0;line-height:1.45}
+#coach:empty{display:none}
+.sq.sug{box-shadow:inset 0 0 0 3px #ffd166,inset 0 0 12px 2px rgba(255,209,102,.6)}
+#log{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:.5rem .8rem;margin-top:.8rem;max-height:8rem;overflow:auto;font-size:.9rem;line-height:1.5;color:var(--dim)}
+#log:empty{display:none}
+#log .you{color:var(--purple)}
+#chatRow{display:flex;gap:.5rem;margin-top:.6rem}
+#chatIn{flex:1;min-width:0;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:.7rem;font:inherit}
+#chatIn:focus-visible{outline:2px solid var(--purple)}
 @media (prefers-reduced-motion:no-preference){.sq{transition:background .15s}}
 </style>
 </head>
@@ -56,9 +67,20 @@ button:disabled{opacity:.45;cursor:default}
   <div class="menu">
     <button onclick="openSetup('ai')">Play vs AI<small>Five levels, from Starter to Master</small></button>
     <button onclick="openSetup('two')">Two Player<small>Share one device</small></button>
-    <button class="soon" disabled>Coach Mode<small>Coming in stage 2</small></button>
+    <button onclick="show('coachMenu');$('pts').textContent='Points: '+points">Coach Mode<small>Lessons, puzzles and a coach that helps as you play</small></button>
     <button class="soon" disabled>Chess Sets<small>Coming in stage 3</small></button>
   </div>
+</section>
+
+<section id="coachMenu" class="screen">
+  <h2>Coach Mode</h2>
+  <p class="sub" id="pts"></p>
+  <div class="menu">
+    <button onclick="openSetup('ai',true)">Play with the coach<small>Shadow moves, hints and gentle feedback while you play the AI</small></button>
+    <button onclick="startDrills('lesson')">Lessons<small>Openings and key ideas, step by step</small></button>
+    <button onclick="startDrills('puzzle')">Puzzles<small>Mates, forks and tactics</small></button>
+  </div>
+  <div class="row" style="margin-top:1rem"><button onclick="show('menu')">Back</button></div>
 </section>
 
 <section id="setup" class="screen">
@@ -71,6 +93,10 @@ button:disabled{opacity:.45;cursor:default}
       </select></label>
     <label id="colWrap">Your colour
       <select id="color"><option value="w">White</option><option value="b">Black</option></select></label>
+    <label id="cwWrap"><span></span>
+      <select id="coachW"><option value="0">Coach off</option><option value="1">Basic: shows where pieces can move</option><option value="2">Learner: adds strategy tips</option><option value="3">Beginner: also suggests the best move</option></select></label>
+    <label id="cbWrap"><span></span>
+      <select id="coachB"><option value="0">Coach off</option><option value="1">Basic: shows where pieces can move</option><option value="2">Learner: adds strategy tips</option><option value="3">Beginner: also suggests the best move</option></select></label>
     <label>Timer
       <select id="timer">
         <option value="0">Untimed</option><option value="900">Casual: 15 min</option><option value="600">Casual: 10 min</option>
@@ -84,12 +110,26 @@ button:disabled{opacity:.45;cursor:default}
   <div class="bar"><span id="topName"></span><span class="clock" id="clkTop"></span></div>
   <div id="board" role="grid" aria-label="Chess board"></div>
   <div class="bar"><span id="botName"></span><span class="clock" id="clkBot"></span></div>
+  <div id="coach" aria-live="polite"></div>
   <div id="status" aria-live="polite"></div>
   <div id="moves">No moves yet.</div>
+  <div id="log" aria-live="polite"></div>
+  <div id="chatRow">
+    <input id="chatIn" placeholder="Ask the coach: how does a knight move?" onkeydown="if(event.key==='Enter')ask()">
+    <button onclick="ask()">Ask</button>
+    <button id="micBtn" onclick="listen()">Speak</button>
+  </div>
+  <div class="row ctl" id="ctRow">
+    <button id="ctW" onclick="toggleCoach('w')"></button>
+    <button id="ctB" onclick="toggleCoach('b')"></button>
+  </div>
   <div class="row ctl">
-    <button onclick="undo()">Undo</button>
+    <button id="hintBtn" onclick="hint()">Hint</button>
+    <button id="nextBtn" class="go" onclick="nextDrill()" style="display:none">Next</button>
+    <button id="undoBtn" onclick="undo()">Undo</button>
     <button onclick="toggleSound()" id="sndBtn">Sound: on</button>
-    <button onclick="startGame()">New game</button>
+    <button onclick="toggleVoice()" id="voiceBtn">Voice: off</button>
+    <button id="newBtn" onclick="startGame()">New game</button>
     <button onclick="quit()">Menu</button>
   </div>
 </section>
@@ -100,11 +140,16 @@ const $=id=>document.getElementById(id);
 const GLYPH={p:'\u265F\uFE0E',n:'\u265E',b:'\u265D',r:'\u265C',q:'\u265B',k:'\u265A'};
 const LEVELS=[{n:'Starter',skill:0,ms:60,depth:1,rand:.5},{n:'Easy',skill:4,ms:100,depth:1,rand:.15},
   {n:'Medium',skill:9,ms:250,depth:2,rand:0},{n:'Hard',skill:15,ms:600,depth:2,rand:0},{n:'Master',skill:20,ms:1200,depth:3,rand:0}];
-let mode='ai',game,sel=null,human='w',lvl=LEVELS[2],clocks={w:0,b:0},tick=null,over=false,sound=true,thinking=false,last=null;
+let coach={w:0,b:0},sug=null,fb='',drill=null,dl=[],di=0,mode='ai',game,sel=null,human='w',lvl=LEVELS[2],clocks={w:0,b:0},tick=null,over=false,sound=true,thinking=false,last=null;
 
+let points=0;try{points=+localStorage.getItem('cm_points')||0}catch(e){}
 function show(id){document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('on',s.id===id))}
-function openSetup(m){mode=m;$('setupTitle').textContent=m==='ai'?'Play vs AI':'Two Player';
-  $('lvlWrap').style.display=$('colWrap').style.display=m==='ai'?'grid':'none';show('setup')}
+function openSetup(m,coachOn){mode=m;$('setupTitle').textContent=m==='ai'?(coachOn?'Play with the coach':'Play vs AI'):'Two Player';
+  $('lvlWrap').style.display=$('colWrap').style.display=m==='ai'?'grid':'none';
+  $('cbWrap').style.display=m==='ai'?'none':'grid';
+  $('cwWrap').querySelector('span').textContent=m==='ai'?'Coach for you':'Coach for White';
+  $('cbWrap').querySelector('span').textContent='Coach for Black';
+  $('coachW').value=coachOn?'2':'0';$('coachB').value='0';show('setup')}
 function quit(){clearInterval(tick);show('menu')}
 
 /* ---------- Stockfish (loaded from CDN, with a built-in fallback) ---------- */
@@ -120,13 +165,13 @@ function initStockfish(){
     sf.postMessage('uci');
   }catch(e){sfReady=false}
 }
-function engineMove(cb){
+function engineMove(cb,skill=lvl.skill,ms=lvl.ms,l=lvl){
   if(sfReady){
-    sfCb=m=>{if(m&&m!=='(none)')cb({from:m.slice(0,2),to:m.slice(2,4),promotion:m[4]});else cb(fallbackMove())};
-    sf.postMessage('setoption name Skill Level value '+lvl.skill);
+    sfCb=m=>{if(m&&m!=='(none)')cb({from:m.slice(0,2),to:m.slice(2,4),promotion:m[4]});else cb(fallbackMove(l))};
+    sf.postMessage('setoption name Skill Level value '+skill);
     sf.postMessage('position fen '+game.fen());
-    sf.postMessage('go movetime '+lvl.ms);
-  }else setTimeout(()=>cb(fallbackMove()),350);
+    sf.postMessage('go movetime '+ms);
+  }else setTimeout(()=>cb(fallbackMove(l)),350);
 }
 const VAL={p:100,n:320,b:330,r:500,q:900,k:0};
 function evalBoard(){let s=0;for(const row of game.board())for(const p of row)if(p)s+=(p.color==='w'?1:-1)*VAL[p.type];return s}
@@ -138,11 +183,11 @@ function search(d,a,b,maxi){
     if(b<=a)break}
   return best;
 }
-function fallbackMove(){
+function fallbackMove(l=lvl){
   const ms=game.moves({verbose:true});
-  if(Math.random()<lvl.rand)return ms[Math.floor(Math.random()*ms.length)];
+  if(Math.random()<l.rand)return ms[Math.floor(Math.random()*ms.length)];
   const white=game.turn()==='w';let best=null,bv=white?-1e9:1e9;
-  for(const m of ms.sort(()=>Math.random()-.5)){game.move(m);const v=search(lvl.depth-1,-1e9,1e9,!white);game.undo();
+  for(const m of ms.sort(()=>Math.random()-.5)){game.move(m);const v=search(l.depth-1,-1e9,1e9,!white);game.undo();
     if(white?v>bv:v<bv){bv=v;best=m}}
   return best;
 }
@@ -151,15 +196,21 @@ function fallbackMove(){
 function startGame(){
   game=new Chess();sel=null;over=false;thinking=false;last=null;sfCb=null;
   lvl=LEVELS[+$('level').value];human=mode==='ai'?$('color').value:'w';
+  if(mode==='ai'){const on=+$('coachW').value;coach={w:human==='w'?on:0,b:human==='b'?on:0}}
+  else coach={w:+$('coachW').value,b:+$('coachB').value};sug=null;fb='';
+  drill=null;
   const t=+$('timer').value;clocks={w:t,b:t};
   $('topName').textContent=mode==='ai'?lvl.n+' AI':'Player 2 (Black)';
   $('botName').textContent=mode==='ai'?'You':'Player 1 (White)';
   show('game');clearInterval(tick);
+  const hc=coach.w||coach.b;coachUI();$('ctRow').style.display='';$('log').innerHTML='';
+  $('undoBtn').style.display=$('newBtn').style.display='';$('nextBtn').style.display='none';
+  say(hc?"Coach is on! Pick a piece and teal dots show where it can go. Press Hint any time you'd like a suggestion.":'');
   tick=setInterval(onTick,1000);render();
-  if(mode==='ai'&&human==='b')aiTurn();
+  if(mode==='ai'&&human==='b')aiTurn();else coachTurn();
 }
 function onTick(){
-  const t=+$('timer').value;if(!t||over||game.history().length===0&&false)return;
+  const t=+$('timer').value;if(!t||over||mode==='drill')return;
   clocks[game.turn()]--;
   if(clocks[game.turn()]<=0){clocks[game.turn()]=0;over=true;
     $('status').textContent=(game.turn()==='w'?'Black':'White')+' wins on time.';beep(200,.4)}
@@ -167,6 +218,7 @@ function onTick(){
 }
 function fmt(s){return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
 function renderClocks(){
+  if(mode==='drill'){['clkTop','clkBot'].forEach(i=>$(i).style.display='none');$('topName').textContent='';$('botName').textContent=drill.type==='lesson'?'Lesson':'Puzzle';return}
   const t=+$('timer').value,flip=human==='b'&&mode==='ai';
   const top=flip?'w':'b',bot=flip?'b':'w';
   for(const [id,c] of [['clkTop',top],['clkBot',bot]]){const e=$(id);
@@ -178,11 +230,14 @@ function render(){
   const b=$('board');b.innerHTML='';
   const flip=mode==='ai'&&human==='b';
   const inCheck=game.in_check(),turn=game.turn();
+  const targets={};if(sel&&helpOn())game.moves({square:sel,verbose:true}).forEach(m=>targets[m.to]=m);
   for(let r=0;r<8;r++)for(let f=0;f<8;f++){
     const rr=flip?7-r:r,ff=flip?7-f:f,name='abcdefgh'[ff]+(8-rr);
     const p=game.get(name),d=document.createElement('div');
     d.className='sq '+((rr+ff)%2?'d':'l');
     if(name===sel)d.classList.add('sel');
+    if(targets[name]){d.classList.add('dot');if(targets[name].captured)d.classList.add('cap')}
+    if(sug&&(name===sug.from||name===sug.to))d.classList.add('sug');
     if(last&&(name===last.from||name===last.to))d.classList.add('last');
     if(inCheck&&p&&p.type==='k'&&p.color===turn)d.classList.add('chk');
     if(p){d.textContent=GLYPH[p.type];d.classList.add(p.color==='w'?'pw':'pb')}
@@ -192,20 +247,26 @@ function render(){
   const h=game.history();let html='';
   for(let i=0;i<h.length;i+=2)html+=(i/2+1)+'. '+h[i]+' '+(h[i+1]||'')+'&nbsp;&nbsp; ';
   $('moves').innerHTML=html||'No moves yet.';$('moves').scrollTop=1e6;
-  if(!over)$('status').textContent=thinking?'AI is thinking...':(turn==='w'?'White':'Black')+' to move'+(inCheck?' - check!':'');
+  if(!over&&mode==='drill')$('status').textContent=(turn==='w'?'White':'Black')+' to move';
+  else if(!over)$('status').textContent=thinking?'AI is thinking...':(turn==='w'?'White':'Black')+' to move'+(inCheck?' - check!':'');
   renderClocks();
 }
 function clickSq(name){
-  if(over||thinking||(mode==='ai'&&game.turn()!==human))return;
+  if(over||thinking||(mode==='ai'&&game.turn()!==human)||(mode==='drill'&&drill.done))return;
   const p=game.get(name);
   if(sel){
-    const m=game.move({from:sel,to:name,promotion:'q'});
-    if(m){sel=null;afterMove(m);return}
+    if(game.moves({square:sel,verbose:true}).some(x=>x.to===name)){
+      const track=mode!=='drill'&&coach[game.turn()];
+      const pre=track?search(2,-1e9,1e9,game.turn()==='w'):0;
+      const m=game.move({from:sel,to:name,promotion:'q'});sel=null;
+      if(mode==='drill'){drillCheck(m);return}
+      afterMove(m);if(track&&!over)review(m,pre);coachTurn();return;
+    }
   }
   sel=p&&p.color===game.turn()?name:null;render();
 }
 function afterMove(m){
-  last={from:m.from,to:m.to};
+  last={from:m.from,to:m.to};sug=null;
   if(game.in_checkmate()){over=true;beep(520,.5);$('status').textContent='Checkmate! '+(m.color==='w'?'White':'Black')+' wins.'}
   else if(game.in_draw()){over=true;beep(300,.4);$('status').textContent='Draw.'}
   else beep(m.captured?330:440,.08,m.captured?'square':'sine');
@@ -215,12 +276,161 @@ function afterMove(m){
 }
 function aiTurn(){
   thinking=true;render();
-  engineMove(m=>{thinking=false;if(over)return;const r=game.move(m);if(r)afterMove(r);else render()});
+  engineMove(m=>{thinking=false;if(over)return;const r=game.move(m);if(r){afterMove(r);coachTurn()}else render()});
 }
 function undo(){
   if(thinking||!game.history().length)return;
   game.undo();if(mode==='ai'&&game.turn()!==human&&game.history().length)game.undo();
-  over=false;sel=null;last=null;render();
+  over=false;sel=null;last=null;sug=null;fb='';render();coachTurn();
+}
+
+/* ---------- Coach ---------- */
+const PN={p:'pawn',n:'knight',b:'bishop',r:'rook',q:'queen',k:'king'};
+const DRILLS=[{"t": "lesson", "n": "Take the centre", "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "ok": ["e2e4", "d2d4"], "say": "Welcome to your first lesson! The centre squares matter most in chess. Move a centre pawn two squares forward. The teal dots show where a piece can go.", "win": "Great start! A centre pawn gives your bishop and queen room to move.", "tip": "Try the pawn in front of your king or your queen."}, {"t": "lesson", "n": "Develop a knight", "fen": "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2", "ok": ["g1f3", "b1c3"], "say": "Lesson 2: bring your pieces out early. Move a knight towards the centre.", "win": "Nice! Knights are happiest near the middle of the board.", "tip": "Knights jump in an L-shape. Pick one from the bottom row."}, {"t": "lesson", "n": "Castle to safety", "fen": "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 6 5", "ok": ["e1g1"], "say": "Lesson 3: castling. Your king can hide behind its pawns while a rook joins the game. Move the king two squares towards the rook.", "win": "Well done! Your king is safe and your rook is in play.", "tip": "Click your king and choose the square two steps to the right."}, {"t": "puzzle", "n": "Back-rank mate", "fen": "6k1/5ppp/8/8/8/8/8/R3K3 w - - 0 1", "ok": ["a1a8"], "say": "Puzzle: White to move and checkmate in one. Black's king is trapped behind its own pawns.", "win": "Checkmate! That is called a back-rank mate.", "tip": "Slide your rook all the way up to the back row."}, {"t": "puzzle", "n": "Scholar's mate", "fen": "r1bqkbnr/pppp1ppp/2n5/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 0 1", "ok": ["h5f7"], "say": "Puzzle: mate in one! Black's weakest square is f7.", "win": "Scholar's mate! Beginners fall for this one a lot.", "tip": "Your queen and bishop both aim at f7."}, {"t": "puzzle", "n": "Knight fork", "fen": "1r3k2/8/8/4N3/8/8/8/4K3 w - - 0 1", "ok": ["e5d7"], "say": "Puzzle: find the knight move that attacks the king and the rook at the same time.", "win": "A fork! Black must save the king, so you win the rook.", "tip": "Look at d7."}, {"t": "puzzle", "n": "Free queen", "fen": "4k3/8/8/3q4/8/8/8/3RK3 w - - 0 1", "ok": ["d1d5"], "say": "Puzzle: Black left something undefended. Can you spot it?", "win": "You won a queen for free. Always check what is unprotected!", "tip": "Your rook looks straight up the d-file."}, {"t": "puzzle", "n": "Promote the pawn", "fen": "8/P7/8/8/8/8/6k1/4K3 w - - 0 1", "ok": ["a7a8q"], "say": "Puzzle: a pawn that reaches the far side becomes a new piece. Make a queen!", "win": "Brilliant! A brand new queen.", "tip": "Push the pawn one step forward."}];
+function say(t,quiet){$('coach').textContent=t;if(t&&!quiet){logLine('Coach',t);speak(t)}}
+function logLine(who,t){const d=document.createElement('div');if(who==='You')d.className='you';d.textContent=who+': '+t;$('log').appendChild(d);$('log').scrollTop=1e6}
+function coachUI(){
+  $('ctW').textContent='Coach for White: '+LN[coach.w];
+  $('ctB').textContent='Coach for Black: '+LN[coach.b];
+  const ai=mode==='ai';
+  $('ctW').style.display=ai&&human==='b'?'none':'';
+  $('ctB').style.display=ai&&human==='w'?'none':'';
+  $('hintBtn').style.display=(coach.w||coach.b)?'':'none';
+}
+function toggleCoach(c){
+  coach[c]=(coach[c]+1)%4;sel=null;sug=null;coachUI();render();
+  fb='Coach for '+(c==='w'?'White':'Black')+' is now '+LN[coach[c]]+'.';coachTurn();
+}
+function helpOn(){return mode==='drill'?drill.type==='lesson':!!coach[game.turn()]}
+function why(m){
+  if(m.flags.includes('k')||m.flags.includes('q'))return 'Castling tucks your king to safety and brings a rook into play.';
+  if(m.promotion)return 'Promoting gives you a brand new queen!';
+  game.move({from:m.from,to:m.to,promotion:m.promotion});const mate=game.in_checkmate(),chk=game.in_check();game.undo();
+  if(mate)return 'That is checkmate. The game ends here!';
+  if(m.captured)return 'It wins a '+PN[m.captured]+(chk?' and gives check.':'.');
+  if(chk)return 'It gives check and keeps the pressure on.';
+  const n=game.history().length;
+  if(m.piece==='p'&&'de'.includes(m.to[0])&&n<8)return 'Controlling the centre gives your pieces room to move.';
+  if((m.piece==='n'||m.piece==='b')&&n<14)return 'Developing a piece early gets it into the game.';
+  return 'It improves your position and keeps your pieces safe.';
+}
+const LN=['off','Basic','Learner','Beginner'];
+function review(m,pre){
+  const sgn=m.color==='w'?1:-1,post=search(1,-1e9,1e9,game.turn()==='w'),drop=(pre-post)*sgn;
+  if(drop>=100){
+    let best=null,bv=1e9;
+    for(const r of game.moves({verbose:true})){game.move({from:r.from,to:r.to,promotion:r.promotion});const v=sgn*evalBoard();game.undo();if(v<bv){bv=v;best=r}}
+    fb=best&&best.captured?'Oops, that leaves your '+PN[best.captured]+' on '+best.to+' open to capture. Press Undo to try again, or keep going. Everyone slips sometimes!':'Hmm, that gives away a little material. Press Hint next time you want a safe idea.';
+  }else if(m.captured||m.san.includes('+'))fb=m.captured?'Nice capture! You won a '+PN[m.captured]+'.':'Nice check! Keep the pressure on.';
+  else fb=['Good, solid move.','Nice! Keep it up.','That works well. Keep your pieces protected.'][game.history().length%3];
+}
+function strategyTip(){
+  const t=game.turn(),n=game.history().length;
+  if(game.in_check())return 'Tip: you are in check! Move your king, block the attack, or capture the piece giving check.';
+  try{
+    const o=new Chess(game.fen().replace(/ [wb] /,t==='w'?' b ':' w ').replace(/ [a-h][36] /,' - '));
+    const hit=o.moves({verbose:true}).filter(x=>x.captured&&VAL[x.captured]>=300).sort((x,y)=>VAL[y.captured]-VAL[x.captured])[0];
+    if(hit)return 'Tip: your '+PN[hit.captured]+' on '+hit.to+' could be captured. Move it, or make sure it is protected.';
+  }catch(e){}
+  const my=game.moves({verbose:true}).filter(x=>x.captured&&VAL[x.captured]>=VAL[x.piece]);
+  if(my.length)return 'Tip: you can capture a '+PN[my[0].captured]+' on '+my[0].to+'. Check that your capturing piece will be safe first.';
+  if(n<4)return 'Tip: fight for the centre. Pawns on d4 or e4 (d5 or e5 for Black) give your pieces room to move.';
+  if(n<6)return 'Tip: bring out your knights and bishops before moving the same piece twice.';
+  if(n<24&&(t==='w'?/[KQ]/:/[kq]/).test(game.fen().split(' ')[2]))return 'Tip: castle soon. It protects your king and brings a rook into the game.';
+  let c=0;for(const row of game.board())for(const p of row)if(p&&p.type!=='k'&&p.type!=='p')c++;
+  if(c<=4)return 'Tip: in the endgame, bring your king towards the action and push your pawns to promote.';
+  return 'Tip: keep your pieces protected, look for forks and pins, and put your rooks on open files.';
+}
+function suggest(pre){
+  const f=game.fen();
+  engineMove(m=>{
+    if(game.fen()!==f)return;
+    const mv=game.moves({verbose:true}).find(x=>x.from===m.from&&x.to===m.to);if(!mv)return;
+    sug={from:mv.from,to:mv.to};say((pre?pre+' ':'')+'Suggested move: '+mv.san+' (gold squares). '+why(mv));render();
+  },20,700,LEVELS[4]);
+}
+function coachTurn(){
+  if(over||mode==='drill')return;
+  const t=game.turn(),lv=coach[t];let msg=fb;fb='';
+  if(!lv||(mode==='ai'&&t!==human)){if(msg)say(msg);return}
+  if(lv===2)msg+=(msg?' ':'')+strategyTip();
+  if(lv===3){say((msg?msg+' ':'')+'Finding the best move for you...',true);suggest(msg);return}
+  if(msg)say(msg);
+}
+function hint(){
+  if(over||thinking)return;
+  if(mode==='drill'){if(drill.done)return;sel=drill.ok[0].slice(0,2);say('Hint: '+drill.tip);render();return}
+  if(!coach[game.turn()]){say('Switch the coach on for this side to use hints.');return}
+  if(mode==='ai'&&game.turn()!==human)return;
+  say('Let me think...',true);
+  engineMove(m=>{const mv=game.moves({verbose:true}).find(x=>x.from===m.from&&x.to===m.to);
+    if(!mv)return;sel=mv.from;say('Try '+mv.san+'. '+why(mv));render()},20,800,LEVELS[4]);
+}
+function showPts(){try{localStorage.setItem('cm_points',points)}catch(e){}}
+function startDrills(type){dl=DRILLS.filter(d=>d.t===type);di=0;mode='drill';loadDrill()}
+function loadDrill(){
+  drill={...dl[di],type:dl[di].t,done:false};
+  game=new Chess(drill.fen);sel=null;over=false;thinking=false;last=null;clearInterval(tick);
+  $('hintBtn').style.display='';$('ctRow').style.display='none';$('undoBtn').style.display=$('newBtn').style.display='none';$('nextBtn').style.display='none';
+  show('game');say(drill.n+' ('+(di+1)+' of '+dl.length+'): '+drill.say);render();
+}
+function drillCheck(m){
+  const uci=m.from+m.to+(m.promotion&&drill.ok.some(o=>o.length>4)?m.promotion:'');
+  if(drill.ok.includes(uci)){
+    drill.done=true;points+=10;showPts();beep(660,.25);last={from:m.from,to:m.to};
+    say(drill.win+' +10 points (total '+points+').');
+    $('nextBtn').style.display='';$('nextBtn').textContent=di+1<dl.length?'Next':'Finish';
+  }else{game.undo();beep(220,.2);say("Not quite, but good try! Press Hint if you'd like a nudge.")}
+  render();
+}
+function nextDrill(){di++;if(di>=dl.length){show('coachMenu');$('pts').textContent='All done! Points: '+points;return}loadDrill()}
+
+/* ---------- Chat and voice ---------- */
+let voiceOn=false,rec=null;
+function speak(t){
+  if(!voiceOn||!('speechSynthesis' in window))return;
+  speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);u.rate=1;speechSynthesis.speak(u);
+}
+function toggleVoice(){
+  voiceOn=!voiceOn;$('voiceBtn').textContent='Voice: '+(voiceOn?'on':'off');
+  if(voiceOn){if(!('speechSynthesis' in window)){voiceOn=false;$('voiceBtn').textContent='Voice: off';say('Sorry, this browser cannot speak out loud.');return}speak('Voice is on. I will read my tips out loud.')}
+  else if('speechSynthesis' in window)speechSynthesis.cancel();
+}
+const KB=[
+[/en passant/,'En passant is a special pawn capture. If an enemy pawn jumps two squares and lands next to your pawn, you can capture it as if it had moved only one square. You must do it straight away.'],
+[/promot/,'When a pawn reaches the far side of the board it becomes a new piece, usually a queen.'],
+[/castl/,'Castling moves your king two squares towards a rook, and the rook jumps to the other side of the king. You can only castle if neither piece has moved, nothing is in between, and the king is not in check or passing through check.'],
+[/stalemate/,'Stalemate is a draw. It happens when the player to move has no legal move but is not in check.'],
+[/checkmate|\bmate\b/,'Checkmate means the king is in check and cannot escape. It ends the game.'],
+[/\bcheck\b/,'Check means your king is under attack. You must get out of it by moving the king, blocking, or capturing the attacker.'],
+[/fork/,'A fork is one move that attacks two pieces at once. Knights are brilliant at it.'],
+[/\bpin/,'A pin is when a piece cannot move because a more valuable piece sits behind it on the same line.'],
+[/opening/,'In the opening, take the centre with pawns, bring out your knights and bishops, and castle early.'],
+[/cent(re|er)/,'The centre squares (d4, e4, d5, e5) give your pieces the most room, so fight for them early.'],
+[/develop/,'Developing means bringing your pieces out from the back row so they can join the game.'],
+[/pawn/,'Pawns move forward one square, or two from their starting spot. They capture one square diagonally forward.'],
+[/knight/,'A knight moves in an L-shape: two squares one way and one to the side. It is the only piece that can jump over others.'],
+[/bishop/,'A bishop moves any number of squares diagonally and always stays on the same colour.'],
+[/rook/,'A rook moves any number of squares in a straight line, forwards, backwards or sideways.'],
+[/queen/,'The queen is the strongest piece. She moves any number of squares in a straight line or diagonally.'],
+[/king/,'The king moves one square in any direction. Keep him safe, because losing him means losing the game.'],
+[/point|unlock/,'You earn 10 points for each lesson or puzzle you finish. Unlockable chess sets are coming soon.'],
+[/^(hi|hello|hey)\b/,'Hello! Ask me how a piece moves, what a rule means, or press Hint for a move suggestion.']
+];
+function ask(){
+  const v=$('chatIn').value.trim();if(!v)return;
+  $('chatIn').value='';logLine('You',v);const q=v.toLowerCase();
+  if(/hint|best move|suggest|what should i|which move|help me/.test(q)){hint();return}
+  const hit=KB.find(k=>k[0].test(q));
+  say(hit?hit[1]:'I can explain how pieces move, rules like castling and en passant, and ideas like forks and pins. Or press Hint for a move suggestion.');
+}
+function listen(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){say('Sorry, voice input is not supported in this browser. Chrome, Edge or Safari should work.',true);logLine('Coach','Voice input is not supported in this browser. Try Chrome, Edge or Safari.');return}
+  try{rec=new SR();rec.lang='en-GB';rec.onstart=()=>{$('micBtn').textContent='Listening...'};
+    rec.onend=()=>{$('micBtn').textContent='Speak'};
+    rec.onerror=()=>{$('micBtn').textContent='Speak';logLine('Coach','I could not hear you. Check that your microphone is allowed for this page.')};
+    rec.onresult=e=>{$('chatIn').value=e.results[0][0].transcript;ask()};rec.start()}catch(e){}
 }
 
 /* ---------- Sound ---------- */
