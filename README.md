@@ -17,3 +17,9 @@ Double-click `index.html` to open it in your browser. You need an internet conne
 ## Notes
 - The AI uses Stockfish when it loads. If it cannot load, a simpler built-in engine plays instead, so the game always works.
 - Unlockable chess sets and logo polish come in stage 3. Coach points are already being saved for it.
+
+## Online games (two devices, free)
+1. Player 1 opens the game, taps **Online Game**, then **Create game**, and shares the code or link.
+2. Player 2 opens the link (or taps **Online Game**, types the code and taps **Join**).
+3. Keep both pages open during the game. Phones are kept awake while playing.
+4. If two devices cannot connect (strict Wi-Fi or mobile networks), try mobile data or a phone hotspot. For an extra free fallback, sign up for a free Open Relay account and paste its TURN details into the `TURN` list near the top of the online section in `index.html`.

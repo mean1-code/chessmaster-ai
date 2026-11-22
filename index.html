@@ -50,6 +50,10 @@ button:disabled{opacity:.45;cursor:default}
 #coach:empty{display:none}
 .tok{display:flex;align-items:center;justify-content:center;width:80%;height:80%;border-radius:50%;background:var(--tc);font-size:calc(var(--s)/8*.5);border:2px solid rgba(0,0,0,.35);box-shadow:0 2px 4px rgba(0,0,0,.35);line-height:1}
 .tok.tb{border-color:rgba(255,255,255,.35)}
+.bigcode{font-size:2.2rem;letter-spacing:.3em;text-align:center;color:var(--teal);margin:.8rem 0 .4rem;font-weight:700}
+#jcode{text-transform:uppercase;letter-spacing:.15em}
+button,.sq{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+@media (max-width:600px){button,select{min-height:44px}.screen{padding:1rem .7rem}#chatIn,#jcode{font-size:16px}}
 .credit{text-align:center;color:var(--dim);font-size:.85rem;margin-top:1.8rem;line-height:1.5}
 .mb{--s:min(80vw,320px);width:var(--s);height:var(--s);margin:.8rem auto;display:grid;grid-template:repeat(8,1fr)/repeat(8,1fr);border:2px solid var(--line);border-radius:6px;overflow:hidden}
 .setgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.6rem;margin:1rem 0}
@@ -65,8 +69,8 @@ input[type=range]{accent-color:var(--teal);width:100%}
 #log:empty{display:none}
 #log .you{color:var(--purple)}
 #chatRow{display:flex;gap:.5rem;margin-top:.6rem}
-#chatIn{flex:1;min-width:0;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:.7rem;font:inherit}
-#chatIn:focus-visible{outline:2px solid var(--purple)}
+#chatIn,#jcode{flex:1;min-width:0;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:.7rem;font:inherit}
+#chatIn:focus-visible,#jcode:focus-visible{outline:2px solid var(--purple)}
 @media (prefers-reduced-motion:no-preference){.sq{transition:background .15s}}
 </style>
 </head>
@@ -79,11 +83,31 @@ input[type=range]{accent-color:var(--teal);width:100%}
   <div class="menu">
     <button onclick="openSetup('ai')">Play vs AI<small>Five levels, from Starter to Master</small></button>
     <button onclick="openSetup('two')">Two Player<small>Share one device</small></button>
+    <button onclick="openOnline()">Online Game<small>Play a friend on another device, anywhere</small></button>
     <button onclick="show('coachMenu');$('pts').textContent='Points: '+points">Coach Mode<small>Lessons, puzzles and a coach that helps as you play</small></button>
     <button onclick="openSets()">Chess Sets<small>Pick your pieces and preview sets you can earn</small></button>
     <button onclick="openVoice()">Voice options<small>Choose the coach's voice and speed</small></button>
   </div>
   <p class="credit">This game was designed by Leo C and built by Leo C with help from Claude AI.</p>
+</section>
+
+<section id="online" class="screen">
+  <h2>Online Game</h2>
+  <p class="sub" style="text-align:left">Play a friend on another phone, tablet or computer, anywhere. Free, no account needed.</p>
+  <div class="opts">
+    <label>Coach for you<select id="ocoach"><option value="0">Coach off</option><option value="1">Basic: shows where pieces can move</option><option value="2">Learner: adds strategy tips</option><option value="3">Beginner: also suggests the best move</option></select></label>
+  </div>
+  <h2 style="font-size:1.1rem">Start a game</h2>
+  <div class="opts">
+    <label>Your colour<select id="ocol"><option value="w">White</option><option value="b">Black</option><option value="r">Random</option></select></label>
+    <label>Timer<select id="otimer"><option value="0">Untimed</option><option value="900">Casual: 15 min</option><option value="600">Casual: 10 min</option><option value="300">Quick: 5 min</option><option value="180">Blitz: 3 min</option></select></label>
+  </div>
+  <div class="row"><button class="go" onclick="createGame()">Create game</button></div>
+  <div id="onShare" style="display:none"><div id="onCode" class="bigcode"></div><div class="row" style="justify-content:center"><button onclick="shareLink()">Share link</button></div></div>
+  <h2 style="font-size:1.1rem;margin-top:1.5rem">Join a game</h2>
+  <div class="row" style="flex-wrap:nowrap"><input id="jcode" maxlength="8" placeholder="Enter code" autocapitalize="characters" autocomplete="off" onkeydown="if(event.key==='Enter')joinGame()"><button class="go" onclick="joinGame()">Join</button></div>
+  <p id="onStatus" class="sub" style="text-align:left;color:var(--teal)" aria-live="polite"></p>
+  <div class="row"><button onclick="closeOnline();show('menu')">Back</button></div>
 </section>
 
 <section id="sets" class="screen">
@@ -166,11 +190,15 @@ input[type=range]{accent-color:var(--teal);width:100%}
     <button onclick="toggleVoice()" id="voiceBtn">Voice: on</button>
     <button onclick="speak(lastSpoken,true)">Repeat</button>
     <button id="newBtn" onclick="startGame()">New game</button>
+    <button id="resBtn" onclick="resign()" style="display:none">Resign</button>
+    <button id="drawBtn" onclick="offerDraw()" style="display:none">Offer draw</button>
+    <button id="rematchBtn" class="go" onclick="rematch()" style="display:none">Rematch</button>
     <button onclick="quit()">Menu</button>
   </div>
 </section>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script>
 const $=id=>document.getElementById(id);
 const GLYPH={p:'\u265F\uFE0E',n:'\u265E',b:'\u265D',r:'\u265C',q:'\u265B',k:'\u265A'};
@@ -181,6 +209,7 @@ let coach={w:0,b:0},sug=null,fb='',badPending=null,okMove=null,drill=null,dl=[],
 let points=0;try{points=+localStorage.getItem('cm_points')||0}catch(e){}
 let curSet='classic',prevId='classic',done=[],vName='',vRate=1;
 try{curSet=localStorage.getItem('cm_set')||'classic';done=JSON.parse(localStorage.getItem('cm_done')||'[]');vName=localStorage.getItem('cm_vname')||'';vRate=+localStorage.getItem('cm_vrate')||1}catch(e){}
+function solo(){return mode==='ai'||mode==='online'}
 function show(id){document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('on',s.id===id))}
 function openSetup(m,coachOn){mode=m;$('setupTitle').textContent=m==='ai'?(coachOn?'Play with the coach':'Play vs AI'):'Two Player';
   $('lvlWrap').style.display=$('colWrap').style.display=m==='ai'?'grid':'none';
@@ -188,7 +217,7 @@ function openSetup(m,coachOn){mode=m;$('setupTitle').textContent=m==='ai'?(coach
   $('cwWrap').querySelector('span').textContent=m==='ai'?'Coach for you':'Coach for White';
   $('cbWrap').querySelector('span').textContent='Coach for Black';
   $('coachW').value=coachOn?'2':'0';$('coachB').value='0';show('setup')}
-function quit(){clearInterval(tick);show('menu')}
+function quit(){clearInterval(tick);if(mode==='online')closeOnline();show('menu')}
 
 /* ---------- Stockfish (loaded from CDN, with a built-in fallback) ---------- */
 let sf=null,sfReady=false,sfCb=null;
@@ -242,7 +271,7 @@ function startGame(){
   $('botName').textContent=mode==='ai'?'You':'Player 1 (White)';
   show('game');clearInterval(tick);
   const hc=coach.w||coach.b;coachUI();$('ctRow').style.display='';$('log').innerHTML='';
-  $('undoBtn').style.display=$('newBtn').style.display='';$('nextBtn').style.display='none';
+  $('undoBtn').style.display=$('newBtn').style.display='';$('nextBtn').style.display='none';$('resBtn').style.display=$('drawBtn').style.display=$('rematchBtn').style.display='none';
   say(hc?"Coach is on! Pick a piece and teal dots show where it can go. Press Hint any time you'd like a suggestion.":'');
   tick=setInterval(onTick,1000);render();
   if(mode==='ai'&&human==='b')aiTurn();else coachTurn();
@@ -259,17 +288,18 @@ function onTick(){
 function fmt(s){return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
 function renderClocks(){
   if(mode==='drill'){['clkTop','clkBot'].forEach(i=>$(i).style.display='none');$('topName').textContent='';$('botName').textContent=drill.type==='lesson'?'Lesson':'Puzzle';return}
-  const t=+$('timer').value,flip=human==='b'&&mode==='ai';
+  const t=+$('timer').value,flip=human==='b'&&solo();
   const top=flip?'w':'b',bot=flip?'b':'w';
   for(const [id,c] of [['clkTop',top],['clkBot',bot]]){const e=$(id);
     e.style.display=t?'':'none';e.textContent=fmt(clocks[c]);e.classList.toggle('run',!over&&game.turn()===c)}
-  $('topName').textContent=mode==='ai'?(flip?'You':lvl.n+' AI'):(flip?'Player 1 (White)':'Player 2 (Black)');
-  $('botName').textContent=mode==='ai'?(flip?lvl.n+' AI':'You'):'Player 1 (White)';
+  $('topName').textContent=mode==='online'?'Opponent':mode==='ai'?(flip?'You':lvl.n+' AI'):(flip?'Player 1 (White)':'Player 2 (Black)');
+  $('botName').textContent=mode==='online'?'You':mode==='ai'?(flip?lvl.n+' AI':'You'):'Player 1 (White)';
+  if(mode==='online'){$('rematchBtn').style.display=over?'':'none';$('resBtn').style.display=$('drawBtn').style.display=over?'none':''}
 }
 function co(t,c){const e=document.createElement('span');e.className='co '+c;e.textContent=t;return e}
 function render(){
   const b=$('board');b.innerHTML='';const ST=setById(curSet);b.style.setProperty('--light',ST.light);b.style.setProperty('--dark',ST.dark);b.style.setProperty('--ink-l',ink(ST.light));b.style.setProperty('--ink-d',ink(ST.dark));
-  const flip=mode==='ai'&&human==='b';
+  const flip=solo()&&human==='b';
   const inCheck=game.in_check(),turn=game.turn();
   const targets={};if(sel&&helpOn())game.moves({square:sel,verbose:true}).forEach(m=>targets[m.to]=m);
   for(let r=0;r<8;r++)for(let f=0;f<8;f++){
@@ -296,7 +326,7 @@ function render(){
   $('revBtn').style.display=$('keepBtn').style.display=badPending?'':'none';
 }
 function clickSq(name){
-  if(over||thinking||(mode==='ai'&&game.turn()!==human)||(mode==='drill'&&drill.done)||badPending)return;
+  if(over||thinking||(solo()&&game.turn()!==human)||(mode==='drill'&&drill.done)||badPending)return;
   const p=game.get(name);
   if(sel){
     if(game.moves({square:sel,verbose:true}).some(x=>x.to===name)){
@@ -308,6 +338,7 @@ function clickSq(name){
       if(trusted)fb="Great choice! That was the coach's suggestion.";
       const bad=track&&!trusted&&!game.game_over()?review(m,pre):false;
       if(bad)badPending={lv:coach[m.color]};
+      if(mode==='online'){const mv={t:'move',from:m.from,to:m.to,promotion:m.promotion,tm:clocks[m.color]};if(bad)pendingSend=mv;else sendNet(mv)}
       afterMove(m,bad);coachTurn();return;
     }
   }
@@ -330,6 +361,7 @@ function aiTurn(){
 }
 function undo(){
   if(badPending){reverseBad();return}
+  if(mode==='online')return;
   if(thinking||!game.history().length)return;
   game.undo();if(mode==='ai'&&game.turn()!==human&&game.history().length)game.undo();
   over=false;sel=null;last=null;sug=null;fb='';render();coachTurn();
@@ -343,7 +375,7 @@ function logLine(who,t){const d=document.createElement('div');if(who==='You')d.c
 function coachUI(){
   $('ctW').textContent='Coach for White: '+LN[coach.w];
   $('ctB').textContent='Coach for Black: '+LN[coach.b];
-  const ai=mode==='ai';
+  const ai=solo();
   $('ctW').style.display=ai&&human==='b'?'none':'';
   $('ctB').style.display=ai&&human==='w'?'none':'';
   $('hintBtn').style.display=(coach.w||coach.b)?'':'none';
@@ -386,13 +418,14 @@ function review(m,pre){
 }
 function reverseBad(){
   if(!badPending)return;
-  const lv=badPending.lv;badPending=null;game.undo();last=null;sel=null;sug=null;beep(300,.15);
+  const lv=badPending.lv;badPending=null;pendingSend=null;game.undo();last=null;sel=null;sug=null;beep(300,.15);
   fb='Move reversed. '+(lv>=2?'Have another look, and I will help.':'Try a different move.');
   render();coachTurn();
 }
 function keepBad(){
   if(!badPending)return;
   badPending=null;fb='';render();
+  if(pendingSend){sendNet(pendingSend);pendingSend=null}
   if(mode==='ai'&&game.turn()!==human)aiTurn();else say('Okay, keeping it. Good luck!');
 }
 function strategyTip(){
@@ -424,7 +457,7 @@ function coachTurn(){
   if(over||mode==='drill')return;
   const t=game.turn(),lv=coach[t];let msg=fb;fb='';
   if(badPending){say(msg);return}
-  if(!lv||(mode==='ai'&&t!==human)){if(msg)say(msg);return}
+  if(!lv||(solo()&&t!==human)){if(msg)say(msg);return}
   if(lv===2)msg+=(msg?' ':'')+strategyTip();
   if(lv===3){say((msg?msg+' ':'')+'Finding the best move for you...',true);suggest(msg);return}
   if(msg)say(msg);
@@ -434,7 +467,7 @@ function hint(){
   if(badPending){say('Choose Reverse my move or Keep it first.',true);return}
   if(mode==='drill'){if(drill.done)return;sel=drill.ok[0].slice(0,2);say('Hint: '+drill.tip);render();return}
   if(!coach[game.turn()]){say('Switch the coach on for this side to use hints.');return}
-  if(mode==='ai'&&game.turn()!==human)return;
+  if(solo()&&game.turn()!==human)return;
   say('Let me think...',true);
   engineMove(m=>{const mv=game.moves({verbose:true}).find(x=>x.from===m.from&&x.to===m.to);
     if(!mv)return;sel=mv.from;okMove={from:mv.from,to:mv.to,fen:game.fen()};say('Try '+mv.san+'. '+why(mv));render()},20,800,LEVELS[4]);
@@ -444,7 +477,7 @@ function startDrills(type){dl=DRILLS.filter(d=>d.t===type);di=0;mode='drill';loa
 function loadDrill(){
   drill={...dl[di],type:dl[di].t,done:false};badPending=null;
   game=new Chess(drill.fen);sel=null;over=false;thinking=false;last=null;clearInterval(tick);
-  $('hintBtn').style.display='';$('ctRow').style.display='none';$('undoBtn').style.display=$('newBtn').style.display='none';$('nextBtn').style.display='none';
+  $('hintBtn').style.display='';$('ctRow').style.display='none';$('resBtn').style.display=$('drawBtn').style.display=$('rematchBtn').style.display='none';$('undoBtn').style.display=$('newBtn').style.display='none';$('nextBtn').style.display='none';
   show('game');say(drill.n+' ('+(di+1)+' of '+dl.length+'): '+drill.say);render();
 }
 function drillCheck(m){
@@ -512,6 +545,124 @@ function listen(){
     rec.onerror=()=>{$('micBtn').textContent='Speak';logLine('Coach','I could not hear you. Check that your microphone is allowed for this page.')};
     rec.onresult=e=>{$('chatIn').value=e.results[0][0].transcript;ask()};rec.start()}catch(e){}
 }
+
+/* ---------- Online play (peer-to-peer, free) ---------- */
+const STUN=[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'},{urls:'stun:global.stun.twilio.com:3478'}];
+const TURN=[]; /* Optional free relay: paste Open Relay credentials here, see README */
+let peer=null,conn=null,isHost=false,oCode='',pendingSend=null,hostColor='w',oCoach=0,lock=null,retries=0,started=false,closing=false;
+const SQ=/^[a-h][1-8]$/;
+function onSt(t){$('onStatus').textContent=t}
+function newCode(){const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let r='';for(let i=0;i<5;i++)r+=c[Math.floor(Math.random()*c.length)];return r}
+function openOnline(){show('online');onSt('')}
+function mkPeer(id){return new Peer(id,{config:{iceServers:STUN.concat(TURN)}})}
+function noPeer(){if(typeof Peer==='undefined'){onSt('Online play could not load. Check your internet connection and reload the page.');return true}return false}
+function sendNet(o){try{if(conn&&conn.open)conn.send(o)}catch(e){}}
+function movesList(){return game.history({verbose:true}).map(m=>({from:m.from,to:m.to,promotion:m.promotion}))}
+function sendSync(){
+  if(!game)return;
+  const o={t:'sync',moves:movesList(),clocks,over};
+  if(isHost){o.col=hostColor==='w'?'b':'w';o.timer=+$('timer').value}
+  sendNet(o);
+}
+function createGame(){
+  if(noPeer())return;
+  closeOnline();closing=false;isHost=true;
+  const cv=$('ocol').value;hostColor=cv==='r'?(Math.random()<.5?'w':'b'):cv;oCoach=+$('ocoach').value;
+  $('timer').value=$('otimer').value;tryHost(0);
+}
+function tryHost(n){
+  oCode=newCode();onSt('Creating your game...');
+  peer=mkPeer('cmai-'+oCode);
+  peer.on('open',()=>{$('onCode').textContent=oCode;$('onShare').style.display='';
+    onSt('Share this code or link with your opponent, then keep this page open until they join. You will play '+(hostColor==='w'?'White':'Black')+'.')});
+  peer.on('connection',c=>{if(conn&&conn!==c){try{conn.close()}catch(e){}}conn=c;wire(c)});
+  peer.on('disconnected',()=>{if(!closing)try{peer.reconnect()}catch(e){}});
+  peer.on('error',e=>{if(e.type==='unavailable-id'&&n<5){try{peer.destroy()}catch(x){}tryHost(n+1)}else onSt('Connection problem ('+e.type+'). Please go back and try again.')});
+}
+function joinGame(code){
+  code=String(code||$('jcode').value).trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
+  if(code.length<5){onSt('Please enter the 5-character code.');return}
+  if(noPeer())return;
+  closeOnline();closing=false;isHost=false;oCode=code;oCoach=+$('ocoach').value;
+  onSt('Connecting...');
+  peer=mkPeer(undefined);
+  peer.on('open',dial);
+  peer.on('disconnected',()=>{if(!closing)try{peer.reconnect()}catch(e){}});
+  peer.on('error',e=>{
+    if(started){retry();return}
+    onSt(e.type==='peer-unavailable'?'Game not found. Check the code, and make sure your opponent has created the game and kept the page open.':'Connection problem ('+e.type+'). Please try again.');
+  });
+}
+function dial(){
+  conn=peer.connect('cmai-'+oCode,{reliable:true});wire(conn);
+  setTimeout(()=>{if(!started&&!closing&&$('online').classList.contains('on'))onSt('Still trying... If this takes longer than 20 seconds, the network may be blocking the link. Try mobile data or a phone hotspot.')},15000);
+}
+function retry(){
+  if(closing||isHost)return;
+  if(retries++>30){say('Could not reconnect. Check your internet connection.');return}
+  setTimeout(()=>{if(closing||!peer)return;try{if(peer.disconnected)peer.reconnect()}catch(e){}
+    if(peer.open)dial();else setTimeout(retry,2000)},2500);
+}
+function wire(c){
+  c.on('open',()=>{retries=0;if(started)sendSync();else if(isHost){started=true;startOnlineGame(hostColor,[],null,oCoach);sendSync()}});
+  c.on('data',onData);
+  c.on('close',()=>{if(c!==conn||closing)return;if(started){say('Connection lost. Trying to reconnect...',true);logLine('Coach','Connection lost. Trying to reconnect...');retry()}else if(!isHost)onSt('Connection closed.')});
+}
+function okMoves(a){return Array.isArray(a)&&a.length<700&&a.every(m=>m&&SQ.test(m.from)&&SQ.test(m.to))}
+function onData(d){
+  if(!d||typeof d!=='object')return;
+  if(d.t==='sync'){
+    if(!okMoves(d.moves))return;
+    if(!started&&!isHost){started=true;$('timer').value=String(d.timer||0);startOnlineGame(d.col==='b'?'b':'w',d.moves,d.clocks,oCoach);return}
+    if(!game)return;const mine=game.history().length;
+    if(d.moves.length>mine){const g=new Chess();let ok=true;
+      for(const m of d.moves){if(!g.move({from:m.from,to:m.to,promotion:m.promotion||'q'})){ok=false;break}}
+      if(ok){game=g;if(d.clocks&&Number.isFinite(d.clocks.w)&&Number.isFinite(d.clocks.b))clocks={w:d.clocks.w,b:d.clocks.b};over=!!d.over;last=null;sel=null;sug=null;badPending=null;render();coachTurn();say('Back in sync.',true)}}
+    else if(d.moves.length<mine)sendSync();
+  }else if(d.t==='move'){
+    if(!game||over||game.turn()===human||!SQ.test(d.from)||!SQ.test(d.to))return;
+    const r=game.move({from:d.from,to:d.to,promotion:d.promotion||'q'});
+    if(!r){sendSync();return}
+    if(Number.isFinite(d.tm))clocks[r.color]=d.tm;
+    afterMove(r);coachTurn();
+  }else if(d.t==='resign'){over=true;$('status').textContent='Your opponent resigned. You win!';beep(520,.4);render()}
+  else if(d.t==='draw'){if(!over&&confirm('Your opponent offers a draw. Accept?')){over=true;sendNet({t:'drawYes'});$('status').textContent='Draw agreed.';render()}else sendNet({t:'drawNo'})}
+  else if(d.t==='drawYes'){over=true;$('status').textContent='Draw agreed.';render()}
+  else if(d.t==='drawNo'){say('Your opponent declined the draw.')}
+  else if(d.t==='rematch'){if(confirm('Your opponent wants a rematch. Accept?')){sendNet({t:'rematchYes'});newOnline()}}
+  else if(d.t==='rematchYes')newOnline();
+}
+function startOnlineGame(col,moves,cl,coachLvl){
+  const resync=!!(moves&&moves.length);
+  mode='online';human=col;lvl=LEVELS[2];
+  game=new Chess();(moves||[]).forEach(m=>game.move({from:m.from,to:m.to,promotion:m.promotion||'q'}));
+  const t=+$('timer').value;clocks=cl&&Number.isFinite(cl.w)&&Number.isFinite(cl.b)?{w:cl.w,b:cl.b}:{w:t,b:t};
+  coach={w:0,b:0};coach[human]=coachLvl||0;
+  sel=null;over=false;thinking=false;last=null;sug=null;okMove=null;badPending=null;fb='';sfCb=null;pendingSend=null;
+  show('game');clearInterval(tick);tick=setInterval(onTick,1000);
+  coachUI();$('ctRow').style.display='';if(!resync)$('log').innerHTML='';
+  $('undoBtn').style.display=$('newBtn').style.display=$('nextBtn').style.display='none';
+  $('resBtn').style.display=$('drawBtn').style.display='';$('rematchBtn').style.display='none';
+  say('Connected! You are playing '+(human==='w'?'White':'Black')+'.'+(coach[human]?' Your coach is on.':''));
+  render();coachTurn();wake();
+}
+function newOnline(){human=human==='w'?'b':'w';startOnlineGame(human,[],null,oCoach)}
+function resign(){if(over||!confirm('Resign this game?'))return;over=true;sendNet({t:'resign'});$('status').textContent='You resigned.';render()}
+function offerDraw(){if(over)return;sendNet({t:'draw'});say('Draw offer sent.',true);logLine('Coach','Draw offer sent.')}
+function rematch(){sendNet({t:'rematch'});say('Rematch requested.',true);logLine('Coach','Rematch requested.')}
+function shareLink(){
+  const link=location.origin+location.pathname+'?join='+oCode;
+  if(navigator.share)navigator.share({title:'Chessmaster AI',text:'Join my chess game! Code: '+oCode,url:link}).catch(()=>{});
+  else if(navigator.clipboard)navigator.clipboard.writeText(link).then(()=>onSt('Link copied. Send it to your opponent.'),()=>prompt('Copy this link:',link));
+  else prompt('Copy this link:',link);
+}
+function closeOnline(){
+  closing=true;try{conn&&conn.close()}catch(e){}try{peer&&peer.destroy()}catch(e){}
+  peer=null;conn=null;started=false;pendingSend=null;retries=0;$('onShare').style.display='none';unwake();
+}
+async function wake(){try{if('wakeLock' in navigator&&!lock){lock=await navigator.wakeLock.request('screen');lock.addEventListener('release',()=>{lock=null})}}catch(e){}}
+function unwake(){try{lock&&lock.release()}catch(e){}lock=null}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&mode==='online'&&started)wake()});
 
 /* ---------- Chess sets ---------- */
 const SETS=[
@@ -589,6 +740,7 @@ function toggleSound(){sound=!sound;$('sndBtn').textContent='Sound: '+(sound?'on
 
 initStockfish();$('voiceBtn').textContent='Voice: '+(voiceOn?'on':'off');
 if('speechSynthesis' in window)speechSynthesis.onvoiceschanged=fillVoices;
+try{const j=new URLSearchParams(location.search).get('join');if(j){openOnline();$('jcode').value=j.toUpperCase();setTimeout(()=>joinGame(j),400)}}catch(e){}
 </script>
 </body>
 </html>
