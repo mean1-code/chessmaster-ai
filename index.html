@@ -54,6 +54,11 @@ button:disabled{opacity:.45;cursor:default}
 #jcode{text-transform:uppercase;letter-spacing:.15em}
 button,.sq{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 @media (max-width:600px){button,select{min-height:44px}.screen{padding:1rem .7rem}#chatIn,#jcode{font-size:16px}}
+.evbtn{width:100%;margin-bottom:.8rem;font-size:1.05rem;padding:1rem;text-align:left;border-left:4px solid var(--gold)}
+.evbtn small{display:block;color:var(--dim);font-size:.85rem;margin-top:.2rem}
+.evnext{text-align:center;color:var(--dim);font-size:.9rem;margin:.6rem 0 1rem}
+.evbox{border:2px solid var(--purple);border-radius:14px;padding:1.2rem;margin:1rem 0;text-align:center;background:var(--panel)}
+.evbig{font-size:4rem;line-height:1.1}
 .credit{text-align:center;color:var(--dim);font-size:.85rem;margin-top:1.8rem;line-height:1.5}
 .mb{--s:min(80vw,320px);width:var(--s);height:var(--s);margin:.8rem auto;display:grid;grid-template:repeat(8,1fr)/repeat(8,1fr);border:2px solid var(--line);border-radius:6px;overflow:hidden}
 .setgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.6rem;margin:1rem 0}
@@ -80,6 +85,7 @@ input[type=range]{accent-color:var(--teal);width:100%}
   <img class="logo" src="logo.svg" alt="Chessmaster AI crown logo">
   <h1 class="title">Chessmaster <span>AI</span></h1>
   <p class="sub">Learn it. Play it. Master it.</p>
+  <div id="evBanner"></div>
   <div class="menu">
     <button onclick="openSetup('ai')">Play vs AI<small>Five levels, from Starter to Master</small></button>
     <button onclick="openSetup('two')">Two Player<small>Share one device</small></button>
@@ -108,6 +114,17 @@ input[type=range]{accent-color:var(--teal);width:100%}
   <div class="row" style="flex-wrap:nowrap"><input id="jcode" maxlength="8" placeholder="Enter code" autocapitalize="characters" autocomplete="off" onkeydown="if(event.key==='Enter')joinGame()"><button class="go" onclick="joinGame()">Join</button></div>
   <p id="onStatus" class="sub" style="text-align:left;color:var(--teal)" aria-live="polite"></p>
   <div class="row"><button onclick="closeOnline();show('menu')">Back</button></div>
+</section>
+
+<section id="event" class="screen">
+  <div class="evbox">
+    <div class="evbig" id="evEmoji"></div>
+    <h2 id="evTitle"></h2>
+    <p id="evStory"></p>
+    <p id="evReward" style="color:var(--teal);font-weight:700" aria-live="polite"></p>
+    <button class="go" id="evOpen" onclick="evOpenDoor()">Open the door!</button>
+  </div>
+  <div class="row" style="justify-content:center"><button onclick="show('menu')">Back to menu</button></div>
 </section>
 
 <section id="sets" class="screen">
@@ -210,7 +227,7 @@ let points=0;try{points=+localStorage.getItem('cm_points')||0}catch(e){}
 let curSet='classic',prevId='classic',done=[],vName='',vRate=1;
 try{curSet=localStorage.getItem('cm_set')||'classic';done=JSON.parse(localStorage.getItem('cm_done')||'[]');vName=localStorage.getItem('cm_vname')||'';vRate=+localStorage.getItem('cm_vrate')||1}catch(e){}
 function solo(){return mode==='ai'||mode==='online'}
-function show(id){document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('on',s.id===id))}
+function show(id){if(id==='menu')setTimeout(()=>evBanner(),0);document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('on',s.id===id))}
 function openSetup(m,coachOn){mode=m;$('setupTitle').textContent=m==='ai'?(coachOn?'Play with the coach':'Play vs AI'):'Two Player';
   $('lvlWrap').style.display=$('colWrap').style.display=m==='ai'?'grid':'none';
   $('cbWrap').style.display=m==='ai'?'none':'grid';
@@ -272,7 +289,7 @@ function startGame(){
   show('game');clearInterval(tick);
   const hc=coach.w||coach.b;coachUI();$('ctRow').style.display='';$('log').innerHTML='';
   $('undoBtn').style.display=$('newBtn').style.display='';$('nextBtn').style.display='none';$('resBtn').style.display=$('drawBtn').style.display=$('rematchBtn').style.display='none';
-  say(hc?"Coach is on! Pick a piece and teal dots show where it can go. Press Hint any time you'd like a suggestion.":'');
+  say(evHello()+(hc?"Coach is on! Pick a piece and teal dots show where it can go. Press Hint any time you'd like a suggestion.":''));
   tick=setInterval(onTick,1000);render();
   if(mode==='ai'&&human==='b')aiTurn();else coachTurn();
 }
@@ -664,12 +681,63 @@ async function wake(){try{if('wakeLock' in navigator&&!lock){lock=await navigato
 function unwake(){try{lock&&lock.release()}catch(e){}lock=null}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&mode==='online'&&started)wake()});
 
+/* ---------- Special events ---------- */
+function easterDate(y){const a=y%19,b=Math.floor(y/100),c=y%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451),mo=Math.floor((h+l-7*m+114)/31),da=((h+l-7*m+114)%31)+1;return new Date(y,mo-1,da)}
+const EVENTS=[
+{id:'newyear',name:'New Year Party',emoji:'🎆',pts:50,visitor:'The Midnight Queen',greet:'Happy New Year!',story:'The clock strikes twelve and the Midnight Queen sweeps in wearing a party hat and carrying a glittering chess board. Happy New Year, chess master!',range:y=>[new Date(y,11,31),new Date(y+1,0,2,23,59,59)]},
+{id:'easter',name:'Easter Visit',emoji:'👑🥚',pts:60,visitor:'The Easter King',greet:'Happy Easter!',story:'Knock, knock! The Easter King has come to your house, carrying a basket of golden eggs. He wants to share them with a chess master.',range:y=>{const e=easterDate(y),m=e.getMonth(),d=e.getDate();return [new Date(y,m,d-2),new Date(y,m,d+1,23,59,59)]}},
+{id:'spring',name:'Spectacular Spring',emoji:'🌸',pts:150,super:true,visitor:'The Blossom Queen',greet:'Happy Spring!',story:'Spectacular Spring has arrived! The Blossom Queen dances in from the garden with flowers in her hair, and she has brought you a super bonus.',range:y=>[new Date(y,4,1),new Date(y,4,1,23,59,59)]},
+{id:'autumn',name:'Awesome Autumn',emoji:'🍂',pts:150,super:true,visitor:'The Harvest King',greet:'Happy Autumn!',story:'Awesome Autumn is here! The Harvest King rolls up on a wagon piled high with golden leaves, and he has brought you a super bonus.',range:y=>[new Date(y,8,1),new Date(y,8,1,23,59,59)]},
+{id:'halloween',name:'Spooky Visit',emoji:'🎃',pts:50,visitor:'The Ghost Bishop',greet:'Happy Halloween!',story:'Whooo! The Ghost Bishop floats through the wall with a pumpkin lantern. He is a friendly ghost, and even spooks love chess.',range:y=>[new Date(y,9,29),new Date(y,9,31,23,59,59)]},
+{id:'xmas',name:'Christmas Visit',emoji:'🎅',pts:100,visitor:'Father Christmas',greet:'Merry Christmas!',story:'Ho ho ho! Father Christmas has zoomed in on his sleigh. He loves a good game of chess, and he has brought you a sack of points.',range:y=>[new Date(y,11,24),new Date(y,11,26,23,59,59)]}
+];
+let evForce=null,curEv=null;
+try{const q=new URLSearchParams(location.search).get('event');if(q&&EVENTS.some(e=>e.id===q))evForce=q}catch(e){}
+function evActive(now){
+  now=now||new Date();
+  if(evForce)return {e:EVENTS.find(x=>x.id===evForce),key:'test',test:true};
+  const y=now.getFullYear();
+  for(const e of EVENTS)for(const yy of [y-1,y,y+1]){const r=e.range(yy);if(now>=r[0]&&now<=r[1])return {e:e,key:e.id+yy}}
+  return null;
+}
+function evNext(now){
+  now=now||new Date();const y=now.getFullYear();let best=null;
+  for(const e of EVENTS)for(const yy of [y,y+1]){const r=e.range(yy);if(r[0]>now&&(!best||r[0]<best.d))best={e:e,d:r[0]}}
+  return best;
+}
+function evClaimed(k){try{return JSON.parse(localStorage.getItem('cm_events')||'[]').includes(k)}catch(e){return false}}
+function evSave(k){try{const a=JSON.parse(localStorage.getItem('cm_events')||'[]');a.push(k);localStorage.setItem('cm_events',JSON.stringify(a))}catch(e){}}
+function evHello(){const a=evActive();return a?a.e.greet+' ':''}
+function evBanner(){
+  const b=$('evBanner');if(!b)return;b.innerHTML='';
+  const a=evActive();curEv=a;
+  if(a){
+    if(!a.test&&evClaimed(a.key)){const p=document.createElement('p');p.className='evnext';p.textContent=a.e.greet+' You have already met '+a.e.visitor+' this time. Come back for the next special event!';b.appendChild(p)}
+    else{const bt=document.createElement('button');bt.className='evbtn';bt.textContent=a.e.emoji+' '+a.e.name+(a.test?' (test)':'')+': '+a.e.visitor+' is at your door!';
+      const sm=document.createElement('small');sm.textContent=(a.e.super?'Super bonus day! ':'')+'Tap to open the door and get '+a.e.pts+' points';bt.appendChild(sm);bt.onclick=openEvent;b.appendChild(bt)}
+  }
+  const nx=evNext();
+  if(nx&&!evForce){const d=Math.ceil((nx.d-new Date())/86400000),p=document.createElement('p');p.className='evnext';p.textContent='Next special event: '+nx.e.name+' in '+d+(d===1?' day':' days')+'.';b.appendChild(p)}
+}
+function openEvent(){
+  const a=curEv||evActive();if(!a)return;curEv=a;
+  $('evEmoji').textContent=a.e.emoji;$('evTitle').textContent=a.e.name;$('evStory').textContent=a.e.story;$('evReward').textContent='';
+  $('evOpen').style.display='';show('event');speak(a.e.story);
+}
+function evOpenDoor(){
+  const a=curEv;if(!a)return;$('evOpen').style.display='none';let t;
+  if(a.test)t='Test mode: '+a.e.visitor+' would give you '+a.e.pts+' points. No points were added.';
+  else if(evClaimed(a.key))t='You already collected this visit. See you at the next special event!';
+  else{evSave(a.key);const u=addPoints(a.e.pts);t='Plus '+a.e.pts+' points! You now have '+points+' points.'+u;beep(660,.25)}
+  $('evReward').textContent=t;speak(t);
+}
+
 /* ---------- Chess sets ---------- */
 const SETS=[
 {id:'classic',name:'Classic Modern',cost:0,desc:'Clean, minimal pieces. The default set.',light:'#3a4052',dark:'#262a37'},
 {id:'medieval',name:'Medieval Knights',cost:0,desc:'Swords, steeds and stone towers.',sym:{p:'🗡️',n:'🐴',b:'⛪',r:'🏰',q:'🏹',k:'👑'},light:'#c9a66b',dark:'#7a5230',wc:'#f1e3c4',bc:'#4a3321'},
 {id:'egypt',name:'Ancient Egypt',cost:0,desc:'Snakes, camels and golden sands.',sym:{p:'🐍',n:'🐪',b:'🏺',r:'🔺',q:'🐈',k:'🌞'},light:'#e8c872',dark:'#b0803a',wc:'#f6e6b0',bc:'#1f4e5f'},
-{id:'roman',name:'Roman Legion',cost:10,desc:'Shields, chariot horses and the legion eagle.',sym:{p:'🛡️',n:'🐎',b:'📜',r:'🏛️',q:'⚔️',k:'🦅'},light:'#d9c3a0',dark:'#9c3d3d',wc:'#f3efe6',bc:'#6b1f1f'},
+{id:'roman',name:'Roman Legion',cost:40,desc:'Shields, chariot horses and the legion eagle.',sym:{p:'🛡️',n:'🐎',b:'📜',r:'🏛️',q:'⚔️',k:'🦅'},light:'#d9c3a0',dark:'#9c3d3d',wc:'#f3efe6',bc:'#6b1f1f'},
 {id:'samurai',name:'Samurai and Shogun',cost:80,desc:'Cherry blossoms, ninjas and castles of Japan.',sym:{p:'🌸',n:'🐴',b:'🎎',r:'🏯',q:'🥷',k:'⛩️'},light:'#efe3d3',dark:'#8f2f3a',wc:'#fff7ec',bc:'#2b2b33'},
 {id:'fairy',name:'Fairy-Tale Kingdom',cost:120,desc:'Fairies, unicorns, dragons and royalty.',sym:{p:'🧚',n:'🦄',b:'🐉',r:'🏰',q:'👸',k:'🤴'},light:'#f0d9f5',dark:'#a78bd8',wc:'#fff0fb',bc:'#6a4fb0'},
 {id:'space',name:'Space Explorers',cost:160,desc:'Satellites, rockets, planets and aliens.',sym:{p:'🛰️',n:'🚀',b:'☄️',r:'🪐',q:'👽',k:'🌍'},light:'#2d3560',dark:'#141a3d',wc:'#e8f0ff',bc:'#3b2d73'},
@@ -740,6 +808,7 @@ function toggleSound(){sound=!sound;$('sndBtn').textContent='Sound: '+(sound?'on
 
 initStockfish();$('voiceBtn').textContent='Voice: '+(voiceOn?'on':'off');
 if('speechSynthesis' in window)speechSynthesis.onvoiceschanged=fillVoices;
+evBanner();
 try{const j=new URLSearchParams(location.search).get('join');if(j){openOnline();$('jcode').value=j.toUpperCase();setTimeout(()=>joinGame(j),400)}}catch(e){}
 </script>
 </body>
